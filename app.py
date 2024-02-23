@@ -1,3 +1,5 @@
+# Run "streamlit run app.py in command prompt"
+
 import streamlit as st
 import pickle
 import pandas as pd
