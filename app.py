@@ -1,4 +1,5 @@
 # Run "streamlit run app.py in command prompt"
+# pip install streamlit pickle pandas sklearn
 
 import streamlit as st
 import pickle
