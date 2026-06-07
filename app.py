@@ -1,7 +1,5 @@
-# Run: streamlit run app.py
-# Install: pip install streamlit pandas scikit-learn requests
+# python -m streamlit run app.py
 
-import os
 import pickle
 import requests
 import streamlit as st
@@ -10,9 +8,7 @@ from pathlib import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-# ─────────────────────────────────────────────
-# Page Config  (must be FIRST streamlit call)
-# ─────────────────────────────────────────────
+# has to be the very first st call or streamlit throws an error
 st.set_page_config(
     page_title="Anime Recommender",
     page_icon="🎌",
@@ -20,28 +16,23 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ─────────────────────────────────────────────
-# Custom CSS – dark cinematic theme
-# ─────────────────────────────────────────────
+# all styling in one block here, easier to tweak later
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;600&display=swap');
 
-/* ── Base ── */
 html, body, [class*="css"] {
     background-color: #0d0d0d;
     color: #e8e8e8;
     font-family: 'Inter', sans-serif;
 }
 
-/* ── Sidebar ── */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #111 0%, #1a0a0a 100%);
     border-right: 1px solid #2a2a2a;
 }
 [data-testid="stSidebar"] * { color: #e8e8e8 !important; }
 
-/* ── Hero title ── */
 .hero-title {
     font-family: 'Bebas Neue', cursive;
     font-size: 3.8rem;
@@ -60,7 +51,6 @@ html, body, [class*="css"] {
     margin-top: 4px;
 }
 
-/* ── Divider ── */
 .divider {
     height: 2px;
     background: linear-gradient(90deg, #ff4e4e33, #ff990033, transparent);
@@ -68,10 +58,8 @@ html, body, [class*="css"] {
     margin: 1rem 0 2rem 0;
 }
 
-/* ── Selectbox label ── */
 label { color: #aaa !important; font-size: 0.8rem !important; letter-spacing: 0.1em; }
 
-/* ── Recommend button ── */
 .stButton > button {
     background: linear-gradient(90deg, #ff4e4e, #cc2200);
     color: white !important;
@@ -86,7 +74,6 @@ label { color: #aaa !important; font-size: 0.8rem !important; letter-spacing: 0.
 }
 .stButton > button:hover { opacity: 0.85; transform: translateY(-1px); }
 
-/* ── Anime card ── */
 .anime-card {
     background: #181818;
     border: 1px solid #2a2a2a;
@@ -97,6 +84,7 @@ label { color: #aaa !important; font-size: 0.8rem !important; letter-spacing: 0.
     position: relative;
     overflow: hidden;
 }
+/* left accent bar on each card */
 .anime-card::before {
     content: '';
     position: absolute;
@@ -148,7 +136,6 @@ label { color: #aaa !important; font-size: 0.8rem !important; letter-spacing: 0.
     border: 1px solid #2a2a2a;
 }
 
-/* ── Info box ── */
 .info-box {
     background: #ff4e4e0d;
     border: 1px solid #ff4e4e33;
@@ -159,7 +146,6 @@ label { color: #aaa !important; font-size: 0.8rem !important; letter-spacing: 0.
     margin-bottom: 1.5rem;
 }
 
-/* ── Selectbox styling ── */
 [data-testid="stSelectbox"] > div > div {
     background-color: #1a1a1a !important;
     border: 1px solid #333 !important;
@@ -169,39 +155,28 @@ label { color: #aaa !important; font-size: 0.8rem !important; letter-spacing: 0.
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-# Data Loading  (cached so it runs ONCE)
-# ─────────────────────────────────────────────
+# cache_data so pkl files are read once, not on every rerun
 @st.cache_data(show_spinner=False)
 def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load anime metadata and precomputed similarity matrix from pickle files."""
-    data_dir = Path(".")
+    # using __file__ so path works from any directory, not just project root
+    data_dir = Path(__file__).parent
     anime_df = pd.DataFrame(pickle.load(open(data_dir / "anime.pkl", "rb")))
     sim_df   = pd.DataFrame(pickle.load(open(data_dir / "anime_sim.pkl", "rb")))
     return anime_df, sim_df
 
 
+# pulled this out into its own cached function so the matrix isn't
+# rebuilt every time someone clicks the recommend button
 @st.cache_data(show_spinner=False)
 def build_content_matrix(anime_df: pd.DataFrame):
-    """
-    Build TF-IDF cosine similarity matrix from genre column.
-    Cached so it is computed only ONCE per session, not on every button click.
-    """
     tfidf   = TfidfVectorizer(stop_words="english")
     matrix  = tfidf.fit_transform(anime_df["genre"].fillna(""))
-    cos_sim = linear_kernel(matrix, matrix)
-    return cos_sim
+    return linear_kernel(matrix, matrix)
 
 
-# ─────────────────────────────────────────────
-# Jikan API  – fetch poster image (best-effort)
-# ─────────────────────────────────────────────
+# ttl=3600 so we don't hammer the jikan api with repeat calls for the same anime
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_poster(anime_name: str) -> str | None:
-    """
-    Query the free Jikan v4 API (MyAnimeList) for a poster image URL.
-    Returns None if the request fails or no image is found.
-    """
     try:
         resp = requests.get(
             "https://api.jikan.moe/v4/anime",
@@ -217,14 +192,7 @@ def fetch_poster(anime_name: str) -> str | None:
     return None
 
 
-# ─────────────────────────────────────────────
-# Recommendation logic
-# ─────────────────────────────────────────────
 def get_collaborative_recs(anime_name: str, sim_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Return top-10 anime by collaborative similarity score.
-    Raises KeyError if anime_name not in similarity matrix.
-    """
     results = []
     for title in sim_df.sort_values(by=anime_name, ascending=False).index[1:11]:
         score = round(sim_df[title][anime_name] * 100, 2)
@@ -233,25 +201,16 @@ def get_collaborative_recs(anime_name: str, sim_df: pd.DataFrame) -> pd.DataFram
 
 
 def get_content_recs(anime_name: str, anime_df: pd.DataFrame, cos_sim) -> pd.DataFrame:
-    """
-    Return top-10 anime by TF-IDF genre cosine similarity.
-    Raises IndexError if anime_name not found in dataframe.
-    """
-    idx        = anime_df[anime_df["name"] == anime_name].index[0]
-    scores     = list(enumerate(cos_sim[idx]))
-    scores     = sorted(scores, key=lambda x: x[1], reverse=True)[1:11]
-    indices    = [i[0] for i in scores]
-    sim_vals   = [round(s[1] * 100, 2) for s in scores]
-    recs       = anime_df.iloc[indices][["name", "genre"]].copy()
+    idx      = anime_df[anime_df["name"] == anime_name].index[0]
+    scores   = sorted(enumerate(cos_sim[idx]), key=lambda x: x[1], reverse=True)[1:11]
+    indices  = [i[0] for i in scores]
+    sim_vals = [round(s[1] * 100, 2) for s in scores]
+    recs     = anime_df.iloc[indices][["name", "genre"]].copy()
     recs["match"] = sim_vals
     return recs.reset_index(drop=True)
 
 
-# ─────────────────────────────────────────────
-# UI helpers
-# ─────────────────────────────────────────────
 def render_card(rank: int, name: str, match: float | None = None, genres: str = ""):
-    """Render a single styled anime result card."""
     match_html = f'<span class="match-badge">⚡ {match}% match</span>' if match is not None else ""
 
     genre_chips = ""
@@ -270,7 +229,6 @@ def render_card(rank: int, name: str, match: float | None = None, genres: str = 
 
 
 def render_poster_grid(recs: pd.DataFrame):
-    """Show results as a 5-column poster grid when Jikan images are available."""
     cols = st.columns(5)
     for i, row in recs.iterrows():
         poster = fetch_poster(row["name"])
@@ -278,6 +236,7 @@ def render_poster_grid(recs: pd.DataFrame):
             if poster:
                 st.image(poster, use_container_width=True)
             else:
+                # fallback placeholder if jikan doesn't return an image
                 st.markdown(
                     f'<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;'
                     f'height:180px;display:flex;align-items:center;justify-content:center;'
@@ -291,18 +250,14 @@ def render_poster_grid(recs: pd.DataFrame):
                             f'⚡ {row["match"]}%</p>', unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────
-# Page renderers
-# ─────────────────────────────────────────────
-def page_collaborative(anime_titles, sim_df: pd.DataFrame):
+def page_collaborative(collab_titles, sim_df: pd.DataFrame):
     st.markdown("""
     <div class="info-box">
-        📊 <b>Collaborative Filtering</b> — recommends anime that users with similar tastes also enjoyed.
-        Based on user-rating patterns rather than genre or content.
+        👥 Pick an anime you love — we'll find what people with your exact taste watched next.
     </div>
     """, unsafe_allow_html=True)
 
-    selected = st.selectbox("Choose an anime", anime_titles, key="collab_select")
+    selected  = st.selectbox("Choose an anime", collab_titles, key="collab_select")
     view_mode = st.radio("Display as", ["Cards", "Poster Grid"], horizontal=True)
 
     if st.button("Get Recommendations", key="collab_btn"):
@@ -310,7 +265,7 @@ def page_collaborative(anime_titles, sim_df: pd.DataFrame):
             try:
                 recs = get_collaborative_recs(selected, sim_df)
             except KeyError:
-                st.error("❌ This anime isn't in the similarity matrix. Try another title.")
+                st.error("❌ We don't have enough rating data for this one yet. Try another title.")
                 return
             except Exception as e:
                 st.error(f"❌ Unexpected error: {e}")
@@ -318,7 +273,7 @@ def page_collaborative(anime_titles, sim_df: pd.DataFrame):
 
         st.markdown(f"<hr class='divider'>", unsafe_allow_html=True)
         st.markdown(f"<p style='color:#888;font-size:0.8rem;letter-spacing:0.1em;text-transform:uppercase'>"
-                    f"Top 10 similar to <b style='color:#ff9966'>{selected}</b></p>",
+                    f"Because you liked <b style='color:#ff9966'>{selected}</b></p>",
                     unsafe_allow_html=True)
 
         if view_mode == "Poster Grid":
@@ -328,9 +283,14 @@ def page_collaborative(anime_titles, sim_df: pd.DataFrame):
                 render_card(i + 1, row["name"], row["match"])
 
 
-def page_content_based(anime_titles, anime_df: pd.DataFrame, cos_sim):
+def page_content_based(content_titles, anime_df: pd.DataFrame, cos_sim):
+    st.markdown("""
+    <div class="info-box">
+        🎭 Pick an anime and we'll find everything that feels like it — same vibe, same genres, same energy.
+    </div>
+    """, unsafe_allow_html=True)
 
-    selected = st.selectbox("Choose an anime", anime_titles, key="content_select")
+    selected  = st.selectbox("Choose an anime", content_titles, key="content_select")
     view_mode = st.radio("Display as", ["Cards", "Poster Grid"], horizontal=True)
 
     if st.button("Recommend", key="content_btn"):
@@ -338,7 +298,7 @@ def page_content_based(anime_titles, anime_df: pd.DataFrame, cos_sim):
             try:
                 recs = get_content_recs(selected, anime_df, cos_sim)
             except IndexError:
-                st.error("❌ Anime not found in dataset.")
+                st.error("❌ Couldn't find that title. Try searching for something else.")
                 return
             except Exception as e:
                 st.error(f"❌ Unexpected error: {e}")
@@ -346,7 +306,7 @@ def page_content_based(anime_titles, anime_df: pd.DataFrame, cos_sim):
 
         st.markdown(f"<hr class='divider'>", unsafe_allow_html=True)
         st.markdown(f"<p style='color:#888;font-size:0.8rem;letter-spacing:0.1em;text-transform:uppercase'>"
-                    f"Top 10 genre matches for <b style='color:#ff9966'>{selected}</b></p>",
+                    f"If you loved <b style='color:#ff9966'>{selected}</b>, try these</p>",
                     unsafe_allow_html=True)
 
         if view_mode == "Poster Grid":
@@ -357,18 +317,16 @@ def page_content_based(anime_titles, anime_df: pd.DataFrame, cos_sim):
                 render_card(i + 1, row["name"], row["match"], genres)
 
 
-# ─────────────────────────────────────────────
-# App entry point
-# ─────────────────────────────────────────────
 def main():
-    # Load data
     with st.spinner("Loading data…"):
         anime_df, sim_df = load_data()
         cos_sim          = build_content_matrix(anime_df)
 
-    anime_titles = anime_df["name"].values
+    # two lists because collab needs names that exist in the sim matrix
+    # content-based is fine with everything since it uses the df index
+    collab_titles  = [n for n in anime_df["name"].values if n in sim_df.columns]
+    content_titles = list(anime_df["name"].values)
 
-    # ── Sidebar ──
     with st.sidebar:
         st.markdown('<p class="hero-title">ANIME\nRECS</p>', unsafe_allow_html=True)
         st.markdown('<p class="hero-sub">Discover your next series</p>', unsafe_allow_html=True)
@@ -376,7 +334,7 @@ def main():
 
         page = st.radio(
             "Algorithm",
-            ["📊 Collaborative Filtering", "🎭 Content-Based Filtering"],
+            ["👥 People Also Watched", "🎭 Similar Vibe"],
             label_visibility="collapsed",
         )
 
@@ -387,19 +345,14 @@ def main():
             unsafe_allow_html=True,
         )
 
-    # ── Main area header ──
     st.markdown('<p class="hero-title">ANIME RECOMMENDER</p>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="hero-sub">Find your next obsession</p>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<p class="hero-sub">Find your next obsession</p>', unsafe_allow_html=True)
     st.markdown("<hr class='divider'>", unsafe_allow_html=True)
 
-    # ── Route pages ──
-    if page == "📊 Collaborative Filtering":
-        page_collaborative(anime_titles, sim_df)
+    if page == "👥 People Also Watched":
+        page_collaborative(collab_titles, sim_df)
     else:
-        page_content_based(anime_titles, anime_df, cos_sim)
+        page_content_based(content_titles, anime_df, cos_sim)
 
 
 if __name__ == "__main__":
