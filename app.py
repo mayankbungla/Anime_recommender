@@ -1,359 +1,450 @@
-# python -m streamlit run app.py
-
-import pickle
-import requests
 import streamlit as st
 import pandas as pd
-from pathlib import Path
+import requests
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 
-# has to be the very first st call or streamlit throws an error
+JIKAN = "https://api.jikan.moe/v4"
+
 st.set_page_config(
-    page_title="Anime Recommender",
+    page_title="Anime Recs",
     page_icon="🎌",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="expanded"
 )
 
-# all styling in one block here, easier to tweak later
+# ── Styling ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap');
 
 html, body, [class*="css"] {
     background-color: #0d0d0d;
-    color: #e8e8e8;
+    color: #e8e0d5;
     font-family: 'Inter', sans-serif;
 }
 
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #111 0%, #1a0a0a 100%);
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #111111;
     border-right: 1px solid #2a2a2a;
 }
-[data-testid="stSidebar"] * { color: #e8e8e8 !important; }
+section[data-testid="stSidebar"] * { color: #e8e0d5 !important; }
 
-.hero-title {
-    font-family: 'Bebas Neue', cursive;
-    font-size: 3.8rem;
-    letter-spacing: 0.12em;
-    background: linear-gradient(90deg, #ff4e4e, #ff9900);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin: 0;
-    line-height: 1;
-}
-.hero-sub {
-    color: #888;
-    font-size: 0.9rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    margin-top: 4px;
-}
-
-.divider {
-    height: 2px;
-    background: linear-gradient(90deg, #ff4e4e33, #ff990033, transparent);
-    border: none;
-    margin: 1rem 0 2rem 0;
-}
-
-label { color: #aaa !important; font-size: 0.8rem !important; letter-spacing: 0.1em; }
-
-.stButton > button {
-    background: linear-gradient(90deg, #ff4e4e, #cc2200);
-    color: white !important;
-    border: none;
-    border-radius: 4px;
-    padding: 0.55rem 2.2rem;
-    font-family: 'Bebas Neue', cursive;
+.sidebar-title {
+    font-family: 'Bebas Neue', sans-serif;
     font-size: 1.1rem;
-    letter-spacing: 0.1em;
-    cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.15em;
+    color: #e05a2b !important;
+    margin-bottom: 0;
 }
-.stButton > button:hover { opacity: 0.85; transform: translateY(-1px); }
-
-.anime-card {
-    background: #181818;
-    border: 1px solid #2a2a2a;
-    border-radius: 8px;
-    padding: 1rem;
-    margin-bottom: 0.75rem;
-    transition: border-color 0.2s, transform 0.15s;
-    position: relative;
-    overflow: hidden;
-}
-/* left accent bar on each card */
-.anime-card::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: linear-gradient(180deg, #ff4e4e, #ff9900);
-    border-radius: 8px 0 0 8px;
-}
-.anime-card:hover { border-color: #ff4e4e55; transform: translateX(3px); }
-.card-rank {
-    font-family: 'Bebas Neue', cursive;
-    font-size: 1.6rem;
-    color: #ff4e4e44;
-    position: absolute;
-    right: 12px; top: 8px;
-    line-height: 1;
-}
-.card-name {
-    font-size: 1rem;
-    font-weight: 600;
-    color: #f0f0f0;
-    margin: 0 0 4px 0;
-}
-.card-meta {
+.sidebar-sub {
     font-size: 0.75rem;
-    color: #666;
-    margin: 0;
-}
-.match-badge {
-    display: inline-block;
-    background: #ff4e4e18;
-    border: 1px solid #ff4e4e55;
-    color: #ff9966;
-    font-size: 0.7rem;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 20px;
-    margin-top: 6px;
-    letter-spacing: 0.05em;
-}
-.genre-chip {
-    display: inline-block;
-    background: #ffffff0d;
-    color: #aaa;
-    font-size: 0.65rem;
-    padding: 2px 7px;
-    border-radius: 20px;
-    margin: 3px 3px 0 0;
-    border: 1px solid #2a2a2a;
-}
-
-.info-box {
-    background: #ff4e4e0d;
-    border: 1px solid #ff4e4e33;
-    border-radius: 6px;
-    padding: 0.75rem 1rem;
-    font-size: 0.82rem;
-    color: #bbb;
+    letter-spacing: 0.2em;
+    color: #888 !important;
+    text-transform: uppercase;
+    margin-top: 0;
     margin-bottom: 1.5rem;
 }
 
-[data-testid="stSelectbox"] > div > div {
-    background-color: #1a1a1a !important;
-    border: 1px solid #333 !important;
-    color: #e8e8e8 !important;
+/* Page header */
+.page-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2.4rem;
+    letter-spacing: 0.12em;
+    color: #e05a2b;
+    margin-bottom: 0;
+    line-height: 1;
 }
+.page-sub {
+    font-size: 0.78rem;
+    letter-spacing: 0.28em;
+    color: #888;
+    text-transform: uppercase;
+    margin-top: 4px;
+    margin-bottom: 1.5rem;
+}
+hr.divider {
+    border: none;
+    border-top: 1px solid #2a2a2a;
+    margin: 1rem 0 1.8rem 0;
+}
+
+/* Info box */
+.info-box {
+    background: #181818;
+    border-left: 3px solid #e05a2b;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-bottom: 1.5rem;
+}
+
+/* Anime cards */
+.anime-card {
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: transform 0.2s, border-color 0.2s;
+}
+.anime-card:hover {
+    transform: translateY(-4px);
+    border-color: #e05a2b;
+}
+.card-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #e8e0d5;
+    padding: 0.5rem 0.6rem 0.2rem;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.card-meta {
+    font-size: 0.7rem;
+    color: #777;
+    padding: 0 0.6rem 0.6rem;
+}
+.score-badge {
+    display: inline-block;
+    background: #e05a2b22;
+    color: #e05a2b;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+/* Inputs */
+div[data-testid="stSelectbox"] > div,
+div[data-testid="stTextInput"] > div > div {
+    background: #1a1a1a !important;
+    border: 1px solid #333 !important;
+    border-radius: 6px !important;
+    color: #e8e0d5 !important;
+}
+
+/* Button */
+div[data-testid="stButton"] > button {
+    background: #e05a2b !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-family: 'Bebas Neue', sans-serif !important;
+    font-size: 1.05rem !important;
+    letter-spacing: 0.12em !important;
+    padding: 0.5rem 2rem !important;
+    cursor: pointer !important;
+    transition: background 0.2s !important;
+}
+div[data-testid="stButton"] > button:hover {
+    background: #c44d24 !important;
+}
+
+/* Spinner / status */
+div[data-testid="stSpinner"] { color: #e05a2b !important; }
+
+/* Hide Streamlit branding */
+#MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# cache_data so pkl files are read once, not on every rerun
-@st.cache_data(show_spinner=False)
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    # using __file__ so path works from any directory, not just project root
-    data_dir = Path(__file__).parent
-    anime_df = pd.DataFrame(pickle.load(open(data_dir / "anime.pkl", "rb")))
-    sim_df   = pd.DataFrame(pickle.load(open(data_dir / "anime_sim.pkl", "rb")))
-    return anime_df, sim_df
+# ── Jikan API helpers ──────────────────────────────────────────────────────────
 
-
-# pulled this out into its own cached function so the matrix isn't
-# rebuilt every time someone clicks the recommend button
-@st.cache_data(show_spinner=False)
-def build_content_matrix(anime_df: pd.DataFrame):
-    tfidf   = TfidfVectorizer(stop_words="english")
-    matrix  = tfidf.fit_transform(anime_df["genre"].fillna(""))
-    return linear_kernel(matrix, matrix)
-
-
-# ttl=3600 so we don't hammer the jikan api with repeat calls for the same anime
-@st.cache_data(show_spinner=False, ttl=3600)
-def fetch_poster(anime_name: str) -> str | None:
+@st.cache_data(ttl=3600, show_spinner=False)
+def jikan_search(query: str, limit: int = 12):
     try:
-        resp = requests.get(
-            "https://api.jikan.moe/v4/anime",
-            params={"q": anime_name, "limit": 1},
-            timeout=4,
-        )
-        if resp.status_code == 200:
-            results = resp.json().get("data", [])
-            if results:
-                return results[0].get("images", {}).get("jpg", {}).get("image_url")
+        r = requests.get(f"{JIKAN}/anime", params={"q": query, "limit": limit, "sfw": True}, timeout=10)
+        r.raise_for_status()
+        return r.json().get("data", [])
     except Exception:
-        pass
-    return None
+        return []
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def jikan_anime(mal_id: int):
+    try:
+        r = requests.get(f"{JIKAN}/anime/{mal_id}", timeout=10)
+        r.raise_for_status()
+        return r.json().get("data", {})
+    except Exception:
+        return {}
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def jikan_recommendations(mal_id: int):
+    try:
+        r = requests.get(f"{JIKAN}/anime/{mal_id}/recommendations", timeout=10)
+        r.raise_for_status()
+        return r.json().get("data", [])[:12]
+    except Exception:
+        return []
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def jikan_top(limit: int = 50):
+    try:
+        r = requests.get(f"{JIKAN}/top/anime", params={"limit": limit}, timeout=10)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except Exception:
+        return []
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def jikan_season_now(limit: int = 20):
+    try:
+        r = requests.get(f"{JIKAN}/seasons/now", params={"limit": limit}, timeout=10)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except Exception:
+        return []
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def jikan_genre(genre_id: int, limit: int = 20):
+    try:
+        r = requests.get(f"{JIKAN}/anime", params={"genres": genre_id, "order_by": "score", "sort": "desc", "limit": limit, "sfw": True}, timeout=10)
+        r.raise_for_status()
+        return r.json().get("data", [])
+    except Exception:
+        return []
 
 
-def get_collaborative_recs(anime_name: str, sim_df: pd.DataFrame) -> pd.DataFrame:
-    results = []
-    for title in sim_df.sort_values(by=anime_name, ascending=False).index[1:11]:
-        score = round(sim_df[title][anime_name] * 100, 2)
-        results.append({"name": title, "match": score})
-    return pd.DataFrame(results)
+# ── UI helpers ─────────────────────────────────────────────────────────────────
 
+def page_header(title: str, subtitle: str):
+    st.markdown(f'<div class="page-title">{title}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="page-sub">{subtitle}</div>', unsafe_allow_html=True)
+    st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-def get_content_recs(anime_name: str, anime_df: pd.DataFrame, cos_sim) -> pd.DataFrame:
-    idx      = anime_df[anime_df["name"] == anime_name].index[0]
-    scores   = sorted(enumerate(cos_sim[idx]), key=lambda x: x[1], reverse=True)[1:11]
-    indices  = [i[0] for i in scores]
-    sim_vals = [round(s[1] * 100, 2) for s in scores]
-    recs     = anime_df.iloc[indices][["name", "genre"]].copy()
-    recs["match"] = sim_vals
-    return recs.reset_index(drop=True)
+def info_box(text: str):
+    st.markdown(f'<div class="info-box">{text}</div>', unsafe_allow_html=True)
 
-
-def render_card(rank: int, name: str, match: float | None = None, genres: str = ""):
-    match_html = f'<span class="match-badge">⚡ {match}% match</span>' if match is not None else ""
-
-    genre_chips = ""
-    if genres:
-        for g in str(genres).split(",")[:4]:
-            genre_chips += f'<span class="genre-chip">{g.strip()}</span>'
-
-    st.markdown(f"""
-    <div class="anime-card">
-        <span class="card-rank">#{rank:02d}</span>
-        <p class="card-name">{name}</p>
-        {match_html}
-        <div style="margin-top:6px">{genre_chips}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_poster_grid(recs: pd.DataFrame):
-    cols = st.columns(5)
-    for i, row in recs.iterrows():
-        poster = fetch_poster(row["name"])
-        with cols[i % 5]:
-            if poster:
-                st.image(poster, use_container_width=True)
-            else:
-                # fallback placeholder if jikan doesn't return an image
+def render_cards(anime_list: list, cols: int = 5):
+    if not anime_list:
+        st.warning("Nothing to show right now. Try a different search.")
+        return
+    groups = [anime_list[i:i+cols] for i in range(0, len(anime_list), cols)]
+    for group in groups:
+        columns = st.columns(cols)
+        for col, a in zip(columns, group):
+            img = a.get("images", {}).get("jpg", {}).get("large_image_url", "")
+            title = a.get("title", "Unknown")
+            score = a.get("score")
+            genres = ", ".join(g["name"] for g in a.get("genres", [])[:2])
+            episodes = a.get("episodes") or "?"
+            url = a.get("url", "#")
+            with col:
+                if img:
+                    st.image(img, use_container_width=True)
+                score_html = f'<span class="score-badge">★ {score}</span>' if score else ""
                 st.markdown(
-                    f'<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;'
-                    f'height:180px;display:flex;align-items:center;justify-content:center;'
-                    f'font-size:2rem;">🎌</div>',
-                    unsafe_allow_html=True,
+                    f'<div class="card-title"><a href="{url}" target="_blank" style="color:#e8e0d5;text-decoration:none;">{title}</a></div>'
+                    f'<div class="card-meta">{score_html}{episodes} ep · {genres}</div>',
+                    unsafe_allow_html=True
                 )
-            st.markdown(f'<p style="font-size:0.72rem;color:#ccc;margin:4px 0 0 0;text-align:center">'
-                        f'{row["name"]}</p>', unsafe_allow_html=True)
-            if "match" in row:
-                st.markdown(f'<p style="font-size:0.68rem;color:#ff9966;text-align:center;margin:2px 0">'
-                            f'⚡ {row["match"]}%</p>', unsafe_allow_html=True)
 
 
-def page_collaborative(collab_titles, sim_df: pd.DataFrame):
-    st.markdown("""
-    <div class="info-box">
-        👥 Pick an anime you love — we'll find what people with your exact taste watched next.
-    </div>
-    """, unsafe_allow_html=True)
+# ── Pages ──────────────────────────────────────────────────────────────────────
 
-    selected  = st.selectbox("Choose an anime", collab_titles, key="collab_select")
-    view_mode = st.radio("Display as", ["Cards", "Poster Grid"], horizontal=True)
+def page_community():
+    page_header("Who Else Watched This?", "Find what fans of your favourite anime also loved")
+    info_box("Pick any anime and we'll show you what its fans recommend — based on real MyAnimeList community votes.")
 
-    if st.button("Get Recommendations", key="collab_btn"):
-        with st.spinner("Finding similar anime…"):
-            try:
-                recs = get_collaborative_recs(selected, sim_df)
-            except KeyError:
-                st.error("❌ We don't have enough rating data for this one yet. Try another title.")
+    query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
+    if not query:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("##### 🔥 Popular right now")
+        with st.spinner("Loading..."):
+            top = jikan_top(limit=10)
+        render_cards(top, cols=5)
+        return
+
+    with st.spinner("Searching..."):
+        results = jikan_search(query, limit=10)
+
+    if not results:
+        st.error("No anime found. Try a different spelling.")
+        return
+
+    options = {f"{a['title']}  ({a.get('year') or '?'})": a["mal_id"] for a in results}
+    chosen_label = st.selectbox("", list(options.keys()), label_visibility="collapsed")
+    chosen_id = options[chosen_label]
+    chosen_title = chosen_label.split("  (")[0]
+
+    if st.button("Find Recommendations"):
+        with st.spinner("Fetching community picks..."):
+            recs = jikan_recommendations(chosen_id)
+
+        if not recs:
+            st.warning("No community recommendations found for this title yet.")
+            return
+
+        st.markdown(f"#### Fans of **{chosen_title}** also loved:")
+        details = []
+        for rec in recs[:10]:
+            mid = rec.get("entry", {}).get("mal_id")
+            if mid:
+                d = jikan_anime(mid)
+                if d:
+                    details.append(d)
+
+        render_cards(details, cols=5)
+
+
+def page_similar():
+    page_header("Similar Vibes", "Discover anime that feel just like the one you love")
+    info_box("We match anime by their genres and themes. Great for when you want \"more of this energy\" but don't know what to watch next.")
+
+    query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
+    if not query:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("##### 🏆 Top rated anime")
+        with st.spinner("Loading..."):
+            top = jikan_top(limit=10)
+        render_cards(top, cols=5)
+        return
+
+    with st.spinner("Searching..."):
+        results = jikan_search(query, limit=10)
+
+    if not results:
+        st.error("No anime found. Try a different spelling.")
+        return
+
+    options = {f"{a['title']}  ({a.get('year') or '?'})": a for a in results}
+    chosen_label = st.selectbox("", list(options.keys()), label_visibility="collapsed")
+    chosen = options[chosen_label]
+
+    if st.button("Find Similar Anime"):
+        with st.spinner("Analysing genres..."):
+            pool = jikan_top(limit=50)
+            chosen_id = chosen["mal_id"]
+            pool_ids = {a["mal_id"] for a in pool}
+            if chosen_id not in pool_ids:
+                pool = [chosen] + pool
+
+            def genre_str(a):
+                g = " ".join(x["name"] for x in a.get("genres", []))
+                t = " ".join(x["name"] for x in a.get("themes", []))
+                return f"{g} {t}".strip() or "unknown"
+
+            df = pd.DataFrame([{
+                "mal_id": a["mal_id"],
+                "title": a["title"],
+                "g": genre_str(a),
+                "_d": a
+            } for a in pool]).drop_duplicates("mal_id").reset_index(drop=True)
+
+            tfidf = TfidfVectorizer(stop_words="english")
+            matrix = tfidf.fit_transform(df["g"])
+            sim = linear_kernel(matrix, matrix)
+
+            idx_list = df.index[df["mal_id"] == chosen_id].tolist()
+            if not idx_list:
+                st.warning("Couldn't find this anime in our current pool. Try again shortly.")
                 return
-            except Exception as e:
-                st.error(f"❌ Unexpected error: {e}")
-                return
 
-        st.markdown(f"<hr class='divider'>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color:#888;font-size:0.8rem;letter-spacing:0.1em;text-transform:uppercase'>"
-                    f"Because you liked <b style='color:#ff9966'>{selected}</b></p>",
-                    unsafe_allow_html=True)
+            idx = idx_list[0]
+            scores = sorted(enumerate(sim[idx]), key=lambda x: x[1], reverse=True)
+            top_idx = [i for i, _ in scores if i != idx][:10]
+            similar = [df.iloc[i]["_d"] for i in top_idx]
 
-        if view_mode == "Poster Grid":
-            render_poster_grid(recs)
-        else:
-            for i, row in recs.iterrows():
-                render_card(i + 1, row["name"], row["match"])
+        st.markdown(f"#### Anime with a similar vibe to **{chosen['title']}**:")
+        render_cards(similar, cols=5)
 
 
-def page_content_based(content_titles, anime_df: pd.DataFrame, cos_sim):
-    st.markdown("""
-    <div class="info-box">
-        🎭 Pick an anime and we'll find everything that feels like it — same vibe, same genres, same energy.
-    </div>
-    """, unsafe_allow_html=True)
+def page_browse():
+    page_header("Browse by Mood", "Not sure what you want? Start with a feeling.")
 
-    selected  = st.selectbox("Choose an anime", content_titles, key="content_select")
-    view_mode = st.radio("Display as", ["Cards", "Poster Grid"], horizontal=True)
+    MOODS = {
+        "⚔️  Action & Hype": 1,
+        "💘  Romance & Feels": 22,
+        "😂  Comedy & Chill": 4,
+        "🔮  Fantasy & Magic": 10,
+        "🤯  Mystery & Thriller": 7,
+        "🤖  Sci-Fi & Mecha": 24,
+        "👻  Horror & Dark": 14,
+        "🏆  Sports & Hustle": 30,
+    }
 
-    if st.button("Recommend", key="content_btn"):
-        with st.spinner("Analysing genre patterns…"):
-            try:
-                recs = get_content_recs(selected, anime_df, cos_sim)
-            except IndexError:
-                st.error("❌ Couldn't find that title. Try searching for something else.")
-                return
-            except Exception as e:
-                st.error(f"❌ Unexpected error: {e}")
-                return
+    cols = st.columns(4)
+    selected_mood = None
+    for i, (label, gid) in enumerate(MOODS.items()):
+        if cols[i % 4].button(label, use_container_width=True):
+            selected_mood = (label, gid)
+            st.session_state["mood_label"] = label
+            st.session_state["mood_id"] = gid
 
-        st.markdown(f"<hr class='divider'>", unsafe_allow_html=True)
-        st.markdown(f"<p style='color:#888;font-size:0.8rem;letter-spacing:0.1em;text-transform:uppercase'>"
-                    f"If you loved <b style='color:#ff9966'>{selected}</b>, try these</p>",
-                    unsafe_allow_html=True)
-
-        if view_mode == "Poster Grid":
-            render_poster_grid(recs)
-        else:
-            for i, row in recs.iterrows():
-                genres = row.get("genre", "")
-                render_card(i + 1, row["name"], row["match"], genres)
+    if "mood_id" in st.session_state:
+        label = st.session_state["mood_label"]
+        gid = st.session_state["mood_id"]
+        st.markdown(f"#### Top picks for: **{label}**")
+        with st.spinner("Loading..."):
+            results = jikan_genre(gid, limit=20)
+        render_cards(results, cols=5)
 
 
-def main():
-    with st.spinner("Loading data…"):
-        anime_df, sim_df = load_data()
-        cos_sim          = build_content_matrix(anime_df)
+def page_airing():
+    page_header("Airing Now", "The freshest shows — what everyone is watching this season")
 
-    # two lists because collab needs names that exist in the sim matrix
-    # content-based is fine with everything since it uses the df index
-    collab_titles  = [n for n in anime_df["name"].values if n in sim_df.columns]
-    content_titles = list(anime_df["name"].values)
+    with st.spinner("Fetching this season's anime..."):
+        results = jikan_season_now(limit=25)
 
-    with st.sidebar:
-        st.markdown('<p class="hero-title">ANIME\nRECS</p>', unsafe_allow_html=True)
-        st.markdown('<p class="hero-sub">Discover your next series</p>', unsafe_allow_html=True)
-        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
+    if not results:
+        st.warning("Couldn't load seasonal data right now. Please try again in a moment.")
+        return
 
-        page = st.radio(
-            "Algorithm",
-            ["👥 People Also Watched", "🎭 Similar Vibe"],
-            label_visibility="collapsed",
-        )
-
-        st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-        st.markdown(
-            "<p style='font-size:0.7rem;color:#444;text-align:center'>"
-            "Built with Streamlit · MyAnimeList data</p>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown('<p class="hero-title">ANIME RECOMMENDER</p>', unsafe_allow_html=True)
-    st.markdown('<p class="hero-sub">Find your next obsession</p>', unsafe_allow_html=True)
-    st.markdown("<hr class='divider'>", unsafe_allow_html=True)
-
-    if page == "👥 People Also Watched":
-        page_collaborative(collab_titles, sim_df)
-    else:
-        page_content_based(content_titles, anime_df, cos_sim)
+    results_sorted = sorted(results, key=lambda x: x.get("score") or 0, reverse=True)
+    render_cards(results_sorted, cols=5)
 
 
-if __name__ == "__main__":
-    main()
+def page_top():
+    page_header("All-Time Greatest", "The highest-rated anime of all time, as voted by millions")
+
+    with st.spinner("Loading..."):
+        results = jikan_top(limit=50)
+
+    if not results:
+        st.warning("Couldn't load rankings right now. Please try again in a moment.")
+        return
+
+    render_cards(results, cols=5)
+
+
+# ── Sidebar ────────────────────────────────────────────────────────────────────
+
+with st.sidebar:
+    st.markdown('<p class="sidebar-title">Anime Recs</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sidebar-sub">Discover your next series</p>', unsafe_allow_html=True)
+    st.markdown("---")
+
+    page = st.radio(
+        "",
+        [
+            "🎯  Because You Liked...",
+            "🎭  Similar Vibes",
+            "🎲  Browse by Mood",
+            "📡  Airing Now",
+            "🏆  All-Time Greatest",
+        ],
+        label_visibility="collapsed"
+    )
+
+    st.markdown("---")
+    st.markdown('<p style="font-size:0.72rem;color:#555;text-align:center;">Powered by MyAnimeList</p>', unsafe_allow_html=True)
+
+
+# ── Router ─────────────────────────────────────────────────────────────────────
+
+if "Because You Liked" in page:
+    page_community()
+elif "Similar Vibes" in page:
+    page_similar()
+elif "Browse by Mood" in page:
+    page_browse()
+elif "Airing Now" in page:
+    page_airing()
+elif "All-Time Greatest" in page:
+    page_top()
