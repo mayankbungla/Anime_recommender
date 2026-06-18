@@ -13,44 +13,29 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# -- Styling
+# ── Styling ────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap');
 
-:root {
-    --accent: #667eea;
-    --accent-hover: #764ba2;
-    --bg: #0f1419;
-    --bg-sidebar: #1a1f2e;
-    --border: #2a2a3a;
-    --text: #e0e6ff;
-    --text-muted: #a8afc7;
-}
-
 html, body, [class*="css"] {
-    background-color: var(--bg);
-    color: var(--text);
+    background-color: #0d0d0d;
+    color: #e8e0d5;
     font-family: 'Inter', sans-serif;
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, var(--bg-sidebar) 0%, var(--bg) 100%);
-    border-right: 2px solid var(--accent);
+    background-color: #111111;
+    border-right: 1px solid #2a2a2a;
 }
-section[data-testid="stSidebar"] * { color: var(--text) !important; }
-
-/* Scrollbar */
-::-webkit-scrollbar { width: 8px; }
-::-webkit-scrollbar-track { background: var(--bg-sidebar); }
-::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 4px; }
+section[data-testid="stSidebar"] * { color: #e8e0d5 !important; }
 
 .sidebar-title {
     font-family: 'Bebas Neue', sans-serif;
     font-size: 1.1rem;
     letter-spacing: 0.15em;
-    color: var(--accent) !important;
+    color: #e05a2b !important;
     margin-bottom: 0;
 }
 .sidebar-sub {
@@ -67,7 +52,7 @@ section[data-testid="stSidebar"] * { color: var(--text) !important; }
     font-family: 'Bebas Neue', sans-serif;
     font-size: 2.4rem;
     letter-spacing: 0.12em;
-    color: var(--accent);
+    color: #e05a2b;
     margin-bottom: 0;
     line-height: 1;
 }
@@ -81,14 +66,14 @@ section[data-testid="stSidebar"] * { color: var(--text) !important; }
 }
 hr.divider {
     border: none;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid #2a2a2a;
     margin: 1rem 0 1.8rem 0;
 }
 
 /* Info box */
 .info-box {
-    background: var(--bg-sidebar);
-    border-left: 3px solid var(--accent);
+    background: #181818;
+    border-left: 3px solid #e05a2b;
     padding: 0.75rem 1rem;
     border-radius: 4px;
     font-size: 0.85rem;
@@ -98,20 +83,20 @@ hr.divider {
 
 /* Anime cards */
 .anime-card {
-    background: var(--bg-sidebar);
-    border: 1px solid var(--border);
+    background: #161616;
+    border: 1px solid #2a2a2a;
     border-radius: 8px;
     overflow: hidden;
     transition: transform 0.2s, border-color 0.2s;
 }
 .anime-card:hover {
     transform: translateY(-4px);
-    border-color: var(--accent);
+    border-color: #e05a2b;
 }
 .card-title {
     font-size: 0.8rem;
     font-weight: 600;
-    color: var(--text);
+    color: #e8e0d5;
     padding: 0.5rem 0.6rem 0.2rem;
     line-height: 1.3;
     white-space: nowrap;
@@ -125,8 +110,8 @@ hr.divider {
 }
 .score-badge {
     display: inline-block;
-    background: rgba(102, 126, 234, 0.13);
-    color: var(--accent);
+    background: #e05a2b22;
+    color: #e05a2b;
     border-radius: 3px;
     padding: 1px 5px;
     font-size: 0.68rem;
@@ -137,15 +122,15 @@ hr.divider {
 /* Inputs */
 div[data-testid="stSelectbox"] > div,
 div[data-testid="stTextInput"] > div > div {
-    background: var(--bg-sidebar) !important;
-    border: 1px solid var(--border) !important;
+    background: #1a1a1a !important;
+    border: 1px solid #333 !important;
     border-radius: 6px !important;
-    color: var(--text) !important;
+    color: #e8e0d5 !important;
 }
 
 /* Button */
 div[data-testid="stButton"] > button {
-    background: var(--accent) !important;
+    background: #e05a2b !important;
     color: #fff !important;
     border: none !important;
     border-radius: 6px !important;
@@ -157,11 +142,11 @@ div[data-testid="stButton"] > button {
     transition: background 0.2s !important;
 }
 div[data-testid="stButton"] > button:hover {
-    background: var(--accent-hover) !important;
+    background: #c44d24 !important;
 }
 
 /* Spinner / status */
-div[data-testid="stSpinner"] { color: var(--accent) !important; }
+div[data-testid="stSpinner"] { color: #e05a2b !important; }
 
 /* Hide Streamlit branding */
 #MainMenu, footer, header { visibility: hidden; }
@@ -169,7 +154,7 @@ div[data-testid="stSpinner"] { color: var(--accent) !important; }
 """, unsafe_allow_html=True)
 
 
-# -- Jikan API helpers
+# ── Jikan API helpers ──────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def jikan_search(query: str, limit: int = 12):
@@ -226,7 +211,7 @@ def jikan_genre(genre_id: int, limit: int = 20):
         return []
 
 
-# -- UI helpers
+# ── UI helpers ─────────────────────────────────────────────────────────────────
 
 def page_header(title: str, subtitle: str):
     st.markdown(f'<div class="page-title">{title}</div>', unsafe_allow_html=True)
@@ -255,17 +240,17 @@ def render_cards(anime_list: list, cols: int = 5):
                     st.image(img, use_container_width=True)
                 score_html = f'<span class="score-badge">★ {score}</span>' if score else ""
                 st.markdown(
-                    f'<div class="card-title"><a href="{url}" target="_blank" style="color:var(--text);text-decoration:none;">{title}</a></div>'
+                    f'<div class="card-title"><a href="{url}" target="_blank" style="color:#e8e0d5;text-decoration:none;">{title}</a></div>'
                     f'<div class="card-meta">{score_html}{episodes} ep · {genres}</div>',
                     unsafe_allow_html=True
                 )
 
 
-# -- Pages
+# ── Pages ──────────────────────────────────────────────────────────────────────
 
-def page_community():
+def page_community(n_recs=10):
     page_header("Who Else Watched This?", "Find what fans of your favourite anime also loved")
-    info_box("Pick any anime and we'll show you what its fans recommend, based on real MyAnimeList community votes.")
+    info_box("Pick any anime and we'll show you what its fans recommend — based on real MyAnimeList community votes.")
 
     query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
     if not query:
@@ -298,7 +283,7 @@ def page_community():
 
         st.markdown(f"#### Fans of **{chosen_title}** also loved:")
         details = []
-        for rec in recs[:10]:
+        for rec in recs[:n_recs]:
             mid = rec.get("entry", {}).get("mal_id")
             if mid:
                 d = jikan_anime(mid)
@@ -308,7 +293,7 @@ def page_community():
         render_cards(details, cols=5)
 
 
-def page_similar():
+def page_similar(n_recs=10):
     page_header("Similar Vibes", "Discover anime that feel just like the one you love")
     info_box("We match anime by their genres and themes. Great for when you want \"more of this energy\" but don't know what to watch next.")
 
@@ -363,7 +348,7 @@ def page_similar():
 
             idx = idx_list[0]
             scores = sorted(enumerate(sim[idx]), key=lambda x: x[1], reverse=True)
-            top_idx = [i for i, _ in scores if i != idx][:10]
+            top_idx = [i for i, _ in scores if i != idx][:n_recs]
             similar = [df.iloc[i]["_d"] for i in top_idx]
 
         st.markdown(f"#### Anime with a similar vibe to **{chosen['title']}**:")
@@ -402,7 +387,7 @@ def page_browse():
 
 
 def page_airing():
-    page_header("Airing Now", "The freshest shows and what everyone is watching this season")
+    page_header("Airing Now", "The freshest shows — what everyone is watching this season")
 
     with st.spinner("Fetching this season's anime..."):
         results = jikan_season_now(limit=25)
@@ -428,7 +413,7 @@ def page_top():
     render_cards(results, cols=5)
 
 
-# -- Sidebar
+# ── Sidebar ────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.markdown('<p class="sidebar-title">Anime Recs</p>', unsafe_allow_html=True)
@@ -448,15 +433,23 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    n_recs = st.slider("Recommendations to show", min_value=5, max_value=20, value=10, step=1)
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.link_button("GitHub", "https://github.com/mayankbungla/Anime_recommender", use_container_width=True)
+    with col2:
+        st.link_button("Dataset", "https://www.kaggle.com/datasets/CooperUnion/anime-recommendations-database", use_container_width=True)
+    st.markdown("---")
     st.markdown('<p style="font-size:0.72rem;color:#555;text-align:center;">Powered by MyAnimeList</p>', unsafe_allow_html=True)
 
 
-# -- Router
+# ── Router ─────────────────────────────────────────────────────────────────────
 
 if "Because You Liked" in page:
-    page_community()
+    page_community(n_recs)
 elif "Similar Vibes" in page:
-    page_similar()
+    page_similar(n_recs)
 elif "Browse by Mood" in page:
     page_browse()
 elif "Airing Now" in page:
