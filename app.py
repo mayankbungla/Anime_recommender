@@ -18,24 +18,39 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap');
 
+:root {
+    --accent: #667eea;
+    --accent-hover: #764ba2;
+    --bg: #0f1419;
+    --bg-sidebar: #1a1f2e;
+    --border: #2a2a3a;
+    --text: #e0e6ff;
+    --text-muted: #a8afc7;
+}
+
 html, body, [class*="css"] {
-    background-color: #0d0d0d;
-    color: #e8e0d5;
+    background-color: var(--bg);
+    color: var(--text);
     font-family: 'Inter', sans-serif;
 }
 
 /* Sidebar */
 section[data-testid="stSidebar"] {
-    background-color: #111111;
-    border-right: 1px solid #2a2a2a;
+    background: linear-gradient(180deg, var(--bg-sidebar) 0%, var(--bg) 100%);
+    border-right: 2px solid var(--accent);
 }
-section[data-testid="stSidebar"] * { color: #e8e0d5 !important; }
+section[data-testid="stSidebar"] * { color: var(--text) !important; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-sidebar); }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 4px; }
 
 .sidebar-title {
     font-family: 'Bebas Neue', sans-serif;
     font-size: 1.1rem;
     letter-spacing: 0.15em;
-    color: #e05a2b !important;
+    color: var(--accent) !important;
     margin-bottom: 0;
 }
 .sidebar-sub {
@@ -52,7 +67,7 @@ section[data-testid="stSidebar"] * { color: #e8e0d5 !important; }
     font-family: 'Bebas Neue', sans-serif;
     font-size: 2.4rem;
     letter-spacing: 0.12em;
-    color: #e05a2b;
+    color: var(--accent);
     margin-bottom: 0;
     line-height: 1;
 }
@@ -66,14 +81,14 @@ section[data-testid="stSidebar"] * { color: #e8e0d5 !important; }
 }
 hr.divider {
     border: none;
-    border-top: 1px solid #2a2a2a;
+    border-top: 1px solid var(--border);
     margin: 1rem 0 1.8rem 0;
 }
 
 /* Info box */
 .info-box {
-    background: #181818;
-    border-left: 3px solid #e05a2b;
+    background: var(--bg-sidebar);
+    border-left: 3px solid var(--accent);
     padding: 0.75rem 1rem;
     border-radius: 4px;
     font-size: 0.85rem;
@@ -83,20 +98,20 @@ hr.divider {
 
 /* Anime cards */
 .anime-card {
-    background: #161616;
-    border: 1px solid #2a2a2a;
+    background: var(--bg-sidebar);
+    border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
     transition: transform 0.2s, border-color 0.2s;
 }
 .anime-card:hover {
     transform: translateY(-4px);
-    border-color: #e05a2b;
+    border-color: var(--accent);
 }
 .card-title {
     font-size: 0.8rem;
     font-weight: 600;
-    color: #e8e0d5;
+    color: var(--text);
     padding: 0.5rem 0.6rem 0.2rem;
     line-height: 1.3;
     white-space: nowrap;
@@ -110,8 +125,8 @@ hr.divider {
 }
 .score-badge {
     display: inline-block;
-    background: #e05a2b22;
-    color: #e05a2b;
+    background: rgba(102, 126, 234, 0.13);
+    color: var(--accent);
     border-radius: 3px;
     padding: 1px 5px;
     font-size: 0.68rem;
@@ -122,15 +137,15 @@ hr.divider {
 /* Inputs */
 div[data-testid="stSelectbox"] > div,
 div[data-testid="stTextInput"] > div > div {
-    background: #1a1a1a !important;
-    border: 1px solid #333 !important;
+    background: var(--bg-sidebar) !important;
+    border: 1px solid var(--border) !important;
     border-radius: 6px !important;
-    color: #e8e0d5 !important;
+    color: var(--text) !important;
 }
 
 /* Button */
 div[data-testid="stButton"] > button {
-    background: #e05a2b !important;
+    background: var(--accent) !important;
     color: #fff !important;
     border: none !important;
     border-radius: 6px !important;
@@ -142,11 +157,11 @@ div[data-testid="stButton"] > button {
     transition: background 0.2s !important;
 }
 div[data-testid="stButton"] > button:hover {
-    background: #c44d24 !important;
+    background: var(--accent-hover) !important;
 }
 
 /* Spinner / status */
-div[data-testid="stSpinner"] { color: #e05a2b !important; }
+div[data-testid="stSpinner"] { color: var(--accent) !important; }
 
 /* Hide Streamlit branding */
 #MainMenu, footer, header { visibility: hidden; }
@@ -240,7 +255,7 @@ def render_cards(anime_list: list, cols: int = 5):
                     st.image(img, use_container_width=True)
                 score_html = f'<span class="score-badge">★ {score}</span>' if score else ""
                 st.markdown(
-                    f'<div class="card-title"><a href="{url}" target="_blank" style="color:#e8e0d5;text-decoration:none;">{title}</a></div>'
+                    f'<div class="card-title"><a href="{url}" target="_blank" style="color:var(--text);text-decoration:none;">{title}</a></div>'
                     f'<div class="card-meta">{score_html}{episodes} ep · {genres}</div>',
                     unsafe_allow_html=True
                 )
