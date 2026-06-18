@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Styling ────────────────────────────────────────────────────────────────────
+# -- Styling
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap');
@@ -169,7 +169,7 @@ div[data-testid="stSpinner"] { color: var(--accent) !important; }
 """, unsafe_allow_html=True)
 
 
-# ── Jikan API helpers ──────────────────────────────────────────────────────────
+# -- Jikan API helpers
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def jikan_search(query: str, limit: int = 12):
@@ -226,7 +226,7 @@ def jikan_genre(genre_id: int, limit: int = 20):
         return []
 
 
-# ── UI helpers ─────────────────────────────────────────────────────────────────
+# -- UI helpers
 
 def page_header(title: str, subtitle: str):
     st.markdown(f'<div class="page-title">{title}</div>', unsafe_allow_html=True)
@@ -261,11 +261,11 @@ def render_cards(anime_list: list, cols: int = 5):
                 )
 
 
-# ── Pages ──────────────────────────────────────────────────────────────────────
+# -- Pages
 
 def page_community():
     page_header("Who Else Watched This?", "Find what fans of your favourite anime also loved")
-    info_box("Pick any anime and we'll show you what its fans recommend — based on real MyAnimeList community votes.")
+    info_box("Pick any anime and we'll show you what its fans recommend, based on real MyAnimeList community votes.")
 
     query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
     if not query:
@@ -402,7 +402,7 @@ def page_browse():
 
 
 def page_airing():
-    page_header("Airing Now", "The freshest shows — what everyone is watching this season")
+    page_header("Airing Now", "The freshest shows and what everyone is watching this season")
 
     with st.spinner("Fetching this season's anime..."):
         results = jikan_season_now(limit=25)
@@ -428,7 +428,7 @@ def page_top():
     render_cards(results, cols=5)
 
 
-# ── Sidebar ────────────────────────────────────────────────────────────────────
+# -- Sidebar
 
 with st.sidebar:
     st.markdown('<p class="sidebar-title">Anime Recs</p>', unsafe_allow_html=True)
@@ -451,7 +451,7 @@ with st.sidebar:
     st.markdown('<p style="font-size:0.72rem;color:#555;text-align:center;">Powered by MyAnimeList</p>', unsafe_allow_html=True)
 
 
-# ── Router ─────────────────────────────────────────────────────────────────────
+# -- Router
 
 if "Because You Liked" in page:
     page_community()
