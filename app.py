@@ -350,9 +350,17 @@ def page_similar(n_recs=10):
             scores = sorted(enumerate(sim[idx]), key=lambda x: x[1], reverse=True)
             top_idx = [i for i, _ in scores if i != idx][:n_recs]
             similar = [df.iloc[i]["_d"] for i in top_idx]
+            top_scores = [scores[i][1] for i in range(len(scores)) if scores[i][0] != idx][:n_recs]
 
         st.markdown(f"#### Anime with a similar vibe to **{chosen['title']}**:")
         render_cards(similar, cols=5)
+
+        if top_scores:
+            st.markdown("---")
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Avg Match Score", f"{sum(top_scores)/len(top_scores):.0%}")
+            c2.metric("Top Match", f"{top_scores[0]:.0%}", similar[0]["title"] if similar else "")
+            c3.metric("Results Found", len(similar))
 
 
 def page_browse():
