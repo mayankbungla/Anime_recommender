@@ -21,3 +21,6 @@ Thumbs.db
 
 # Env/secrets
 .env
+
+# PyCharm config
+.idea/
