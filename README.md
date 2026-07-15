@@ -1,51 +1,155 @@
-# Anime Recommender System
+# 🎌 Anime Recommender System
 
-Welcome to the Anime Recommender System project! 
-This project aims to provide personalized recommendations for anime series based on user preferences.
+An intelligent Anime Recommendation System built using **Python**, **Streamlit**, and **Machine Learning** that suggests anime similar to a selected title.
 
-## Introduction
+The application uses a **content-based recommendation engine** powered by similarity scores to recommend anime based on their characteristics.
 
-This repository contains the source code and data for an anime recommender system. The system leverages a collaborative filtering algorithm to recommend anime series to users based on their interests and the similarities between different anime titles. 
-The recommendations take into account factors such as user preferences, anime summaries, and tags associated with each series.
+---
 
-## Installation
+## 🚀 Demo
 
-To use this recommender system, follow the steps below:
+https://your-streamlit-link.streamlit.app
 
+---
 
-1. Clone the repository to your local machine.
-2. Install the required dependencies listed in the requirement.txt file.
-3. Run command streamlit run app.py file to start the application.
+## 📸 Preview
 
-## Usage
+> Add screenshots here
 
-Once the system is running, follow these steps to get anime recommendations:
+| Home Page | Recommendations |
+|-----------|-----------------|
+| ![](images/home.png) | ![](images/result.png) |
 
+---
 
-1. Select an anime series from the dropdown menu.
-2. Click the "Recommend" button.
-3. The system will display the top recommendations along with their titles, summaries, and tags.
+# ✨ Features
 
-## Data
+- Search from thousands of anime titles
+- Get top similar anime recommendations instantly
+- Clean and responsive Streamlit interface
+- Fast recommendation using precomputed similarity matrix
+- Easy to run locally
 
-The anime data used in this system includes information about various series, such as their names, synopses, and tags. 
-The data is stored in a pickle file format and is loaded into the system at runtime.
+---
 
-## Recommendation Algorithm
+# 🛠 Tech Stack
 
-This system employs a collaborative filtering algorithm to generate anime recommendations. 
-It calculates the similarity between different anime series based on user preferences and suggests series that are similar to the selected anime. 
-The recommendations are sorted based on their similarity scores.
+- Python
+- Pandas
+- NumPy
+- Scikit-learn
+- Streamlit
+- Pickle
 
-## Dependencies
+---
 
-The following libraries are required to run the system:
+# 📂 Project Structure
+
+```
+Anime_recommender/
+│
+├── app.py
+├── anime.pkl
+├── similarity.pkl
+├── requirements.txt
+├── README.md
+│
+├── data/
+├── notebooks/
+└── images/
+```
+
+---
+
+# ⚙️ Installation
+
+### Clone the repository
+
+```bash
+git clone https://github.com/mayankbungla/Anime_recommender.git
+```
+
+Move into the project folder
+
+```bash
+cd Anime_recommender
+```
+
+Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the application
+
+```bash
+streamlit run app.py
+```
+
+---
+
+# 🧠 How It Works
+
+1. Load the anime dataset.
+2. Perform preprocessing and feature engineering.
+3. Generate feature vectors.
+4. Compute cosine similarity between anime.
+5. When a user selects an anime, retrieve the most similar titles based on similarity scores.
+6. Display recommended anime along with their posters.
+
+---
+
+# 📊 Dataset
+
+This project uses an anime dataset containing information such as:
+
+- Anime Name
+- Genre
+- Type
+- Rating
+- Synopsis
+- Episodes
+- Popularity
+
+---
+
+# 📦 Dependencies
 
 - streamlit
-- numpy
 - pandas
+- numpy
+- scikit-learn
+- requests
 - pickle
 
-## Contributing
+Install them using:
 
-Contributions to this project are welcome. If you find any bugs, have suggestions for enhancements, or would like to contribute in any way, please feel free to open an issue or submit a pull request.
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+# 💡 Future Improvements
+
+- Hybrid Recommendation System
+- Collaborative Filtering
+- Personalized user recommendations
+- Genre-based filtering
+- Search autocomplete
+- Better UI/UX
+- Deploy using Docker
+- User authentication
+
+---
+
+# 👨‍💻 Author
+
+**Mayank Bungla**
+
+GitHub: https://github.com/mayankbungla
+
+---
+
+# ⭐ If you found this project useful, consider giving it a star!
