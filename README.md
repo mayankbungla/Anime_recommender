@@ -14,7 +14,7 @@ https://your-streamlit-link.streamlit.app
 
 ## 📸 Preview
 
-> Add screenshots here
+
 
 | Home Page | Recommendations |
 |-----------|-----------------|
