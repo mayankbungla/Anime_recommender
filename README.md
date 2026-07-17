@@ -48,6 +48,10 @@ test:      633,223 rows
 Leak check (train ∩ test on (user_id, anime_id)): 0 — confirmed clean
 ```
 
+### EDA highlights
+
+The user-item matrix is 98.71% sparse — the typical user has rated well under 1% of the catalog, which is the central challenge collaborative filtering has to work around. Median anime has 109 ratings; median user has rated 57 anime. Average rating given is 7.81/10, consistent with the well-known positivity bias in rating datasets. Charts (rating distribution, genre distribution, most-rated anime, sparsity) are in `reports/figures/`.
+
 ### Model & evaluation
 
 SVD (`n_factors=50, n_epochs=20, lr_all=0.005, reg_all=0.02, random_state=42`):
@@ -64,12 +68,13 @@ Val/test RMSE agree within 0.002, with a leak count of zero on the (user_id, ani
 ```bash
 pip install -r requirements.txt
 python scripts/download_dataset.py   # -> data/raw/
-python scripts/prepare_data.py       # -> data/processed/ (cleaned, leak-checked split)
+python scripts/prepare_data.py       # -> data/processed/ (cleaned, leak-checked split, Parquet)
+python scripts/eda.py                # -> reports/figures/ (EDA charts + summary stats)
 python -m src.anime_recommender.models.train_cf   # -> models/svd_cf_model.pkl
 python scripts/demo_recommendations.py --user-id 42 --anime-id 1
 ```
 
-<!-- TODO (Day 15): paste real `demo_recommendations.py` output below once run against
+<!-- TODO: paste real `demo_recommendations.py` output below once run against
      the actual trained model, replacing this placeholder. -->
 ```
 === Top 10 for user 42 ===
@@ -100,12 +105,16 @@ AnimeRecommender.ipynb      # Original prototype/EDA notebook (unmodified)
 notebooks/                  # MAL-data notebook — pure DS narrative, separate from the above
 data/
 ├── raw/                    # anime.csv, rating.csv (gitignored — regenerate via scripts/download_dataset.py)
-└── processed/               # train/val/test splits (gitignored — regenerate via scripts/prepare_data.py)
+└── processed/               # train/val/test splits, Parquet (gitignored — regenerate via scripts/prepare_data.py)
 models/
 └── svd_cf_model.pkl        # Trained SVD model (committed — reproducibility/portfolio evidence, not loaded by app.py)
+reports/
+└── figures/                # EDA charts from scripts/eda.py
 scripts/
 ├── download_dataset.py
 ├── prepare_data.py
+├── eda.py
+├── find_demo_users.py
 └── demo_recommendations.py
 src/anime_recommender/
 ├── data/                   # dataset.py, cleaning.py, split.py
@@ -124,4 +133,16 @@ pytest tests/
 ## Links
 
 - Dataset: [CooperUnion/anime-recommendations-database](https://www.kaggle.com/datasets/CooperUnion/anime-recommendations-database)
-- Live app: <!-- TODO: paste Streamlit Cloud URL once verified per Day 15 -->
+- Live app: <!-- TODO: paste Streamlit Cloud URL once verified -->
+
+---
+
+## Author
+
+**Mayank Bungla**
+
+GitHub: https://github.com/mayankbungla
+
+---
+
+⭐ If you found this project useful, consider giving it a star!
