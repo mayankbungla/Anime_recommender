@@ -14,9 +14,9 @@ MODEL_DIR = Path(__file__).resolve().parents[3] / "models"
 
 def main():
     print("Loading processed data...")
-    train_df = pd.read_csv(PROCESSED_DIR / "ratings_train.csv")
-    val_df = pd.read_csv(PROCESSED_DIR / "ratings_val.csv")
-    test_df = pd.read_csv(PROCESSED_DIR / "ratings_test.csv")
+    train_df = pd.read_parquet(PROCESSED_DIR / "ratings_train.parquet")
+    val_df = pd.read_parquet(PROCESSED_DIR / "ratings_val.parquet")
+    test_df = pd.read_parquet(PROCESSED_DIR / "ratings_test.parquet")
 
     reader = Reader(rating_scale=(1, 10))
     data = Dataset.load_from_df(train_df[["user_id", "anime_id", "rating"]], reader)

@@ -1,51 +1,127 @@
-# Anime Recommender System
+# Anime Recommender
 
-Welcome to the Anime Recommender System project! 
-This project aims to provide personalized recommendations for anime series based on user preferences.
+Two intentionally separate recommendation systems, built for different purposes:
 
-## Introduction
+1. **A live app** — real-time recommendations for any anime, powered entirely by the Jikan API
+2. **An offline ML pipeline** — a leak-checked, evaluated collaborative-filtering model trained on 6M+ historical ratings
 
-This repository contains the source code and data for an anime recommender system. The system leverages a collaborative filtering algorithm to recommend anime series to users based on their interests and the similarities between different anime titles. 
-The recommendations take into account factors such as user preferences, anime summaries, and tags associated with each series.
+They are not wired together. See [Why two separate systems?](#why-two-separate-systems) below.
 
-## Installation
+---
 
-To use this recommender system, follow the steps below:
+## 1. The live app
 
+`app.py` is a Streamlit app with five pages, all backed by live calls to the [Jikan API](https://jikan.moe/) (a public MyAnimeList wrapper) — no local dataset, no trained model:
 
-1. Clone the repository to your local machine.
-2. Install the required dependencies listed in the requirement.txt file.
-3. Run command streamlit run app.py file to start the application.
+- **Because You Liked...** — community recommendations via Jikan's own `/recommendations` endpoint
+- **Similar Vibes** — genre/theme similarity computed on-the-fly with TF-IDF + cosine similarity over the current top-anime pool
+- **Browse by Mood** — genre-tag browsing (Action, Romance, Horror, etc.)
+- **Airing Now** — current-season anime, sorted by score
+- **All-Time Greatest** — the all-time top-rated list
 
-## Usage
+All Jikan calls are cached (`st.cache_data`, 1hr TTL) to stay within the public API's rate limits.
 
-Once the system is running, follow these steps to get anime recommendations:
+### Run it
 
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
 
-1. Select an anime series from the dropdown menu.
-2. Click the "Recommend" button.
-3. The system will display the top recommendations along with their titles, summaries, and tags.
+No API keys or local data required — it talks to Jikan directly.
 
-## Data
+---
 
-The anime data used in this system includes information about various series, such as their names, synopses, and tags. 
-The data is stored in a pickle file format and is loaded into the system at runtime.
+## 2. The ML pipeline
 
-## Recommendation Algorithm
+A classic offline collaborative-filtering pipeline on the [CooperUnion/anime-recommendations-database](https://www.kaggle.com/datasets/CooperUnion/anime-recommendations-database) Kaggle dataset: ingest → clean → leak-checked split → train an SVD model (`scikit-surprise`) → evaluate on a held-out test set.
 
-This system employs a collaborative filtering algorithm to generate anime recommendations. 
-It calculates the similarity between different anime series based on user preferences and suggests series that are similar to the selected anime. 
-The recommendations are sorted based on their similarity scores.
+### Pipeline stats
 
-## Dependencies
+```
+ratings: 7,813,737 -> 6,314,631 rows retained (~81%)
+users:   60,970
+anime:   8,027
+train:   5,048,185 rows
+val:       633,223 rows
+test:      633,223 rows
+Leak check (train ∩ test on (user_id, anime_id)): 0 — confirmed clean
+```
 
-The following libraries are required to run the system:
+### Model & evaluation
 
-- streamlit
-- numpy
-- pandas
-- pickle
+SVD (`n_factors=50, n_epochs=20, lr_all=0.005, reg_all=0.02, random_state=42`):
 
-## Contributing
+```
+val:  RMSE=1.1247  MAE=0.8422  n=633,223
+test: RMSE=1.1226  MAE=0.8424  n=633,223
+```
 
-Contributions to this project are welcome. If you find any bugs, have suggestions for enhancements, or would like to contribute in any way, please feel free to open an issue or submit a pull request.
+Val/test RMSE agree within 0.002, with a leak count of zero on the (user_id, anime_id) key — no sign of leakage or split bias. RMSE ~1.0–1.3 on a 1–10 rating scale is the expected range for this dataset.
+
+### Reproduce it
+
+```bash
+pip install -r requirements.txt
+python scripts/download_dataset.py   # -> data/raw/
+python scripts/prepare_data.py       # -> data/processed/ (cleaned, leak-checked split)
+python -m src.anime_recommender.models.train_cf   # -> models/svd_cf_model.pkl
+python scripts/demo_recommendations.py --user-id 42 --anime-id 1
+```
+
+<!-- TODO (Day 15): paste real `demo_recommendations.py` output below once run against
+     the actual trained model, replacing this placeholder. -->
+```
+=== Top 10 for user 42 ===
+[ paste real output here ]
+
+=== Anime similar to id 1 (by learned embeddings) ===
+[ paste real output here ]
+```
+
+---
+
+## Why two separate systems?
+
+The trained SVD model is **user-based collaborative filtering** — it only produces meaningful recommendations for `user_id`s that existed in its training set. The live app serves anonymous visitors searching arbitrary titles, who have no such `user_id`: a textbook cold-start mismatch.
+
+Rather than force an awkward integration (fake user IDs, forced mappings, degraded quality), the two systems are kept deliberately separate, each evaluated on its own terms:
+
+- The **app** is a product-engineering exercise: live API integration, caching, UX, on-the-fly similarity.
+- The **model** is a methodology exercise: data cleaning, leak-checked splitting, trained collaborative filtering, real held-out evaluation metrics.
+
+---
+
+## Repo structure
+
+```
+app.py                      # Live Jikan-API Streamlit app
+AnimeRecommender.ipynb      # Original prototype/EDA notebook (unmodified)
+notebooks/                  # MAL-data notebook — pure DS narrative, separate from the above
+data/
+├── raw/                    # anime.csv, rating.csv (gitignored — regenerate via scripts/download_dataset.py)
+└── processed/               # train/val/test splits (gitignored — regenerate via scripts/prepare_data.py)
+models/
+└── svd_cf_model.pkl        # Trained SVD model (committed — reproducibility/portfolio evidence, not loaded by app.py)
+scripts/
+├── download_dataset.py
+├── prepare_data.py
+└── demo_recommendations.py
+src/anime_recommender/
+├── data/                   # dataset.py, cleaning.py, split.py
+├── features/similarity.py  # currently unused by app.py
+└── models/                 # train_cf.py, predict.py
+tests/
+```
+
+## Development
+
+```bash
+pip install -r requirements.txt
+pytest tests/
+```
+
+## Links
+
+- Dataset: [CooperUnion/anime-recommendations-database](https://www.kaggle.com/datasets/CooperUnion/anime-recommendations-database)
+- Live app: <!-- TODO: paste Streamlit Cloud URL once verified per Day 15 -->

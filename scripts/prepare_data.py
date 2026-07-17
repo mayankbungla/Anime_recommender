@@ -1,9 +1,10 @@
 """
-Days 8-10 pipeline, end to end:
+Days 8-11 pipeline, end to end:
   load raw dataset -> clean -> split by user -> save train/val/test
 
-Saved as CSV for now — Day 11 swaps this over to Parquet, so don't be
-surprised that this script gets a one-line diff later.
+Day 11 update: saved as Parquet now (was CSV through Day 10). Parquet keeps
+dtypes exact (no more int64 ids silently round-tripping as strings/floats),
+compresses much smaller than CSV, and loads faster for the training script.
 
 USAGE
 -----
@@ -14,6 +15,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+import pandas as pd
 
 from anime_recommender.data.dataset import load_raw_dataset
 from anime_recommender.data.cleaning import clean_anime_metadata, clean_ratings
@@ -40,12 +43,35 @@ def main():
     print(f"  test:  {len(test_df):,} rows")
 
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    anime_clean.to_csv(PROCESSED_DIR / "anime_clean.csv", index=False)
-    train_df.to_csv(PROCESSED_DIR / "ratings_train.csv", index=False)
-    val_df.to_csv(PROCESSED_DIR / "ratings_val.csv", index=False)
-    test_df.to_csv(PROCESSED_DIR / "ratings_test.csv", index=False)
+
+    outputs = {
+        "anime_clean.parquet": anime_clean,
+        "ratings_train.parquet": train_df,
+        "ratings_val.parquet": val_df,
+        "ratings_test.parquet": test_df,
+    }
+    for fname, df in outputs.items():
+        df.to_parquet(PROCESSED_DIR / fname, index=False)
 
     print(f"Saved to {PROCESSED_DIR}/")
+
+    # Verify each file round-trips correctly via pandas.read_parquet before
+    # trusting it downstream (Day 11 explicitly calls for this check).
+    print("Verifying Parquet round-trip...")
+    for fname, original_df in outputs.items():
+        reloaded = pd.read_parquet(PROCESSED_DIR / fname)
+        assert reloaded.shape == original_df.shape, f"{fname}: shape mismatch after reload"
+        assert list(reloaded.columns) == list(original_df.columns), f"{fname}: column mismatch after reload"
+        print(f"  {fname}: OK  ({reloaded.shape[0]:,} rows, {reloaded.shape[1]} cols)")
+
+    # Clean up the old CSVs from Days 8-10 now that Parquet is the source
+    # of truth, so nothing downstream can accidentally read stale CSVs.
+    old_csvs = ["anime_clean.csv", "ratings_train.csv", "ratings_val.csv", "ratings_test.csv"]
+    for fname in old_csvs:
+        old_path = PROCESSED_DIR / fname
+        if old_path.exists():
+            old_path.unlink()
+            print(f"  removed stale {fname}")
 
 
 if __name__ == "__main__":
