@@ -9,3 +9,4 @@ joblib
 pytest
 pyarrow
 matplotlib
+sentence-transformers

@@ -7,11 +7,15 @@ Pulling it out means the same logic can be reused by:
   - the offline evaluation scripts (Week 4), once we're scoring a
     content-based model against a real dataset instead of a live pool
 
-NOTE: this TF-IDF-on-genre-strings approach is the placeholder content
-model referenced in the plan. Day 18 replaces it with sentence-transformer
-embeddings over synopses, and Day 19 replaces the dense cosine matrix here
-with approximate nearest neighbours (NearestNeighbors/FAISS) so it scales
-past a small in-memory pool.
+NOTE: this TF-IDF-on-genre-strings approach is the LIVE-APP content model.
+It runs over the small in-memory Jikan pool the Streamlit page already has
+loaded, where TF-IDF is cheap and fitting anything heavier would be
+overkill.
+
+The offline, catalogue-scale content model now lives in content_model.py:
+synopsis embeddings (sentence-transformers, Day 18) retrieved with
+NearestNeighbors (Day 19). The two are kept separate on purpose, matching
+the app-vs-pipeline split described in the README.
 """
 
 import pandas as pd
