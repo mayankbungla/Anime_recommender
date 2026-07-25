@@ -1,0 +1,12 @@
+streamlit
+pandas
+numpy
+scikit-learn
+requests
+kagglehub
+scikit-surprise
+joblib
+pytest
+pyarrow
+matplotlib
+sentence-transformers
