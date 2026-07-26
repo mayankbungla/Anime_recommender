@@ -1,14 +1,10 @@
 """
-Day 20: eyeball both models on anime I actually know.
+Compares CF and content-based neighbours for a handful of well-known
+anime, side by side. Useful for catching a model that scores fine on
+paper but gives odd recommendations, numbers alone won't show that,
+only checking titles you actually recognise will.
 
-Picks five well-known titles and prints, side by side:
-  - CF neighbours from the learned SVD item factors
-  - content neighbours from the synopsis embeddings
-
-Writes the same thing to reports/sanity_check.md so the notes live with
-the repo. The CF side always runs (it only needs the exported factors).
-The content side runs only if models/content/ exists, so this is useful
-before and after building the content model.
+Saves the same comparison to reports/sanity_check.md.
 
 USAGE
     python scripts/sanity_check.py
@@ -47,6 +43,7 @@ def format_recs(df: pd.DataFrame) -> str:
 def main():
     catalog = pd.read_parquet(CATALOG_PATH)[["anime_id", "name", "genre"]]
 
+    # content model is optional, CF works with just the exported factors
     content = None
     if CONTENT_DIR.exists():
         from anime_recommender.features.content_model import ContentRecommender
@@ -55,7 +52,7 @@ def main():
         print("models/content/ not found: content side will be skipped.\n"
               "Run scripts/build_content_model.py to fill it in.\n")
 
-    lines = ["# Day 20: sanity check", "",
+    lines = ["# Sanity check: CF vs content neighbours", "",
              "Neighbours for five well-known anime, from each model.", ""]
 
     for title in PICKS:
@@ -96,7 +93,7 @@ def main():
               "- Where do the two disagree, and which looks more sensible?", ""]
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text("\n".join(lines))
+    OUT_PATH.write_text("\n".join(lines), encoding="utf-8")
     print(f"\nWrote {OUT_PATH}")
 
 
