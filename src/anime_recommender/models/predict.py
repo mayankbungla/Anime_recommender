@@ -38,8 +38,7 @@ def get_user_top_n(user_id: int, k: int = 10, model_path: str = MODEL_PATH,
     which is fine for a single lookup but far too slow for batch evaluation.
 
     Returns a DataFrame with columns: anime_id, title (if anime_df given), predicted_rating
-    sorted descending by predicted_rating. Raises ValueError if user_id was not
-    in the training set (cold-start, this model only supports known users).
+    sorted descending by predicted_rating. (cold-start, this model only supports known users).
     """
     if algo is None:
         algo = _load_model(model_path)
@@ -83,11 +82,10 @@ def similar_items(anime_id: int, k: int = 10, model_path: str = MODEL_PATH,
     """
     Top-k anime most similar to `anime_id` by cosine similarity of the
     SVD model's learned item embeddings (algo.qi rows), not genre/theme
-    text similarity (that's the Jikan-based "Similar Vibes" page in app.py,
-    a separate and unrelated similarity metric).
+    text similarity.
 
     Returns a DataFrame with columns: anime_id, title (if anime_df given), similarity.
-    Never includes the query item itself. Raises ValueError if anime_id was
+    Never includes the query item itself. Raises ValueError if anime_id is
     not in the training set.
     """
     algo = _load_model(model_path)
@@ -133,7 +131,7 @@ def similar_items_from_factors(anime_id: int, k: int = 10,
     matrix plus the id map, so there's no reason to unpickle the whole
     Trainset just to look up neighbours.
 
-    Use this for offline work (sanity checks, the Week 5 hybrid). The
+    Use this for sanity checks. The
     pickle-based similar_items() above is kept for parity with the trained
     model object.
     """
