@@ -29,15 +29,20 @@ def _load_model(model_path: str = MODEL_PATH):
 
 
 def get_user_top_n(user_id: int, k: int = 10, model_path: str = MODEL_PATH,
-                    anime_df: pd.DataFrame | None = None) -> pd.DataFrame:
+                    anime_df: pd.DataFrame | None = None, algo=None) -> pd.DataFrame:
     """
     Top-k predicted unrated anime for a KNOWN training-set user_id.
+
+    Pass an already-loaded model via `algo` when scoring many users in a
+    loop, otherwise this reloads the ~162MB pickle from disk every call,
+    which is fine for a single lookup but far too slow for batch evaluation.
 
     Returns a DataFrame with columns: anime_id, title (if anime_df given), predicted_rating
     sorted descending by predicted_rating. Raises ValueError if user_id was not
     in the training set (cold-start, this model only supports known users).
     """
-    algo = _load_model(model_path)
+    if algo is None:
+        algo = _load_model(model_path)
     trainset = algo.trainset
 
     try:
