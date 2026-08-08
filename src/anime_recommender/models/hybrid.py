@@ -87,3 +87,63 @@ def hybrid_top_n(user_id: int, k: int, algo, content, popularity: dict,
     ]
     scored.sort(key=lambda x: x[1], reverse=True)
     return [aid for aid, _ in scored[:k]]
+
+
+def cf_item_similarity(query_id: int, candidate_id: int, algo) -> float | None:
+    """Cosine similarity between two anime's learned CF embeddings,
+    rescaled to 0-1. None if either anime has no CF factors."""
+    trainset = algo.trainset
+    try:
+        qi = trainset.to_inner_iid(query_id)
+        ci = trainset.to_inner_iid(candidate_id)
+    except ValueError:
+        return None
+    a, b = algo.qi[qi], algo.qi[ci]
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    sim = float(np.dot(a, b) / denom) if denom > 0 else 0.0
+    return (sim + 1) / 2
+
+
+def item_content_similarity(query_id: int, candidate_id: int, content) -> float:
+    """Cosine similarity between two anime's synopsis embeddings,
+    rescaled to 0-1. Zero if either anime is missing from the catalogue."""
+    if query_id not in content._row_by_id or candidate_id not in content._row_by_id:
+        return 0.0
+    a = content.embeddings[content._row_by_id[query_id]]
+    b = content.embeddings[content._row_by_id[candidate_id]]
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    sim = float(np.dot(a, b) / denom) if denom > 0 else 0.0
+    return (sim + 1) / 2
+
+
+def item_hybrid_score(query_id: int, candidate_id: int, algo, content,
+                       popularity: dict, alpha: float = 0.34, beta: float = 0.33,
+                       gamma: float = 0.33) -> float:
+    """
+    Blended anime-to-anime score, no user required. Same cold-start
+    renormalization as hybrid_score when CF has no factors for either
+    anime. Default weights are the tuned result from
+    reports/hybrid_weight_tuning.csv.
+    """
+    cf = cf_item_similarity(query_id, candidate_id, algo)
+    content_s = item_content_similarity(query_id, candidate_id, content)
+    pop = popularity.get(candidate_id, 0.0)
+
+    if cf is None:
+        total = beta + gamma
+        return (beta / total) * content_s + (gamma / total) * pop
+
+    return alpha * cf + beta * content_s + gamma * pop
+
+
+def item_hybrid_top_n(query_id: int, k: int, algo, content, popularity: dict,
+                       candidate_ids: list, alpha: float = 0.34,
+                       beta: float = 0.33, gamma: float = 0.33) -> list:
+    """Ranks candidate_ids against one query anime, no user needed.
+    Returns a list of (anime_id, score) tuples, highest first."""
+    scored = [
+        (cid, item_hybrid_score(query_id, cid, algo, content, popularity, alpha, beta, gamma))
+        for cid in candidate_ids if cid != query_id
+    ]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored[:k]
