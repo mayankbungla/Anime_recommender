@@ -10,3 +10,6 @@ pytest
 pyarrow
 matplotlib
 sentence-transformers
+fastapi
+uvicorn
+httpx
