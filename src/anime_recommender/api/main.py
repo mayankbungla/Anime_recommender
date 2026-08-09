@@ -33,6 +33,9 @@ ROOT = Path(__file__).resolve().parents[3]
 MODEL_PATH = ROOT / "models" / "svd_cf_model.pkl"
 CONTENT_DIR = ROOT / "models" / "content"
 TRAIN_PATH = ROOT / "data" / "processed" / "ratings_train.parquet"
+# content_catalog.parquet only carries anime_id/name/genre (what the
+# embeddings needed), so /anime/{id} reads the rest from here instead.
+ANIME_CLEAN_PATH = ROOT / "data" / "processed" / "anime_clean.parquet"
 
 SHORTLIST_SIZE = 50
 
@@ -42,6 +45,7 @@ algo = joblib.load(MODEL_PATH)
 content = ContentRecommender.load(CONTENT_DIR)
 train = pd.read_parquet(TRAIN_PATH)
 popularity = build_popularity_scores(train)
+anime_clean = pd.read_parquet(ANIME_CLEAN_PATH).set_index("anime_id")
 
 
 def resolve_anime_id(name: str) -> int | None:
@@ -93,14 +97,16 @@ def get_anime(anime_id: int):
         raise HTTPException(status_code=404, detail=f"No anime with id {anime_id}")
 
     row = match.iloc[0]
+    clean_row = anime_clean.loc[anime_id] if anime_id in anime_clean.index else None
+
     return AnimeInfo(
         anime_id=int(row["anime_id"]),
         name=row["name"],
         genre=_none_if_nan(row.get("genre")),
-        type=_none_if_nan(row.get("type")),
-        episodes=_none_if_nan(row.get("episodes")),
-        rating=_none_if_nan(row.get("rating")),
-        members=_none_if_nan(row.get("members")),
+        type=_none_if_nan(clean_row["type"]) if clean_row is not None else None,
+        episodes=_none_if_nan(clean_row["episodes"]) if clean_row is not None else None,
+        rating=_none_if_nan(clean_row["rating"]) if clean_row is not None else None,
+        members=_none_if_nan(clean_row["members"]) if clean_row is not None else None,
         synopsis=_none_if_nan(row.get("synopsis")),
     )
 
