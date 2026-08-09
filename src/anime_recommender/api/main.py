@@ -18,8 +18,14 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 
+from anime_recommender.api.schemas import (
+    AnimeInfo,
+    HealthResponse,
+    RecommendationItem,
+    RecommendRequest,
+    RecommendResponse,
+)
 from anime_recommender.features.content_model import ContentRecommender
 from anime_recommender.models.hybrid import build_popularity_scores, item_hybrid_top_n
 
@@ -36,11 +42,6 @@ algo = joblib.load(MODEL_PATH)
 content = ContentRecommender.load(CONTENT_DIR)
 train = pd.read_parquet(TRAIN_PATH)
 popularity = build_popularity_scores(train)
-
-
-class RecommendRequest(BaseModel):
-    anime_name: str
-    k: int = 10
 
 
 def resolve_anime_id(name: str) -> int | None:
@@ -74,7 +75,37 @@ def content_shortlist(anime_id: int, n: int) -> list:
     return neighbours["anime_id"].tolist()
 
 
-@app.post("/recommend")
+def _none_if_nan(value):
+    """Parquet-sourced numeric fields come back as NaN, not missing,
+    NaN isn't valid JSON so this turns it into a real null."""
+    return None if pd.isna(value) else value
+
+
+@app.get("/health", response_model=HealthResponse)
+def health():
+    return HealthResponse(status="ok", model_loaded=algo is not None, catalog_size=len(content.catalog))
+
+
+@app.get("/anime/{anime_id}", response_model=AnimeInfo)
+def get_anime(anime_id: int):
+    match = content.catalog[content.catalog["anime_id"] == anime_id]
+    if not len(match):
+        raise HTTPException(status_code=404, detail=f"No anime with id {anime_id}")
+
+    row = match.iloc[0]
+    return AnimeInfo(
+        anime_id=int(row["anime_id"]),
+        name=row["name"],
+        genre=_none_if_nan(row.get("genre")),
+        type=_none_if_nan(row.get("type")),
+        episodes=_none_if_nan(row.get("episodes")),
+        rating=_none_if_nan(row.get("rating")),
+        members=_none_if_nan(row.get("members")),
+        synopsis=_none_if_nan(row.get("synopsis")),
+    )
+
+
+@app.post("/recommend", response_model=RecommendResponse)
 def recommend(request: RecommendRequest):
     anime_id = resolve_anime_id(request.anime_name)
     if anime_id is None:
@@ -89,11 +120,11 @@ def recommend(request: RecommendRequest):
     ranked = item_hybrid_top_n(anime_id, request.k, algo, content, popularity, candidates)
 
     titles = content.catalog.set_index("anime_id")["name"]
-    return {
-        "query_anime_id": anime_id,
-        "query_title": titles.get(anime_id, request.anime_name),
-        "recommendations": [
-            {"anime_id": aid, "title": titles.get(aid, "Unknown"), "hybrid_score": round(score, 4)}
+    return RecommendResponse(
+        query_anime_id=anime_id,
+        query_title=titles.get(anime_id, request.anime_name),
+        recommendations=[
+            RecommendationItem(anime_id=aid, title=titles.get(aid, "Unknown"), hybrid_score=round(score, 4))
             for aid, score in ranked
         ],
-    }
+    )
