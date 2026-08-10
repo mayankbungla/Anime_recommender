@@ -1,10 +1,8 @@
 import streamlit as st
-import pandas as pd
 import requests
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import linear_kernel
 
 JIKAN = "https://api.jikan.moe/v4"
+API_BASE = "http://127.0.0.1:8000"  # FastAPI backend, see src/anime_recommender/api
 
 st.set_page_config(
     page_title="Anime Recs",
@@ -174,7 +172,7 @@ div[data-testid="stSpinner"] { color: var(--accent) !important; }
 """, unsafe_allow_html=True)
 
 
-# -- Jikan API helpers
+# -- Jikan API helpers (live display metadata, never used for ranking)
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def jikan_search(query: str, limit: int = 12):
@@ -193,15 +191,6 @@ def jikan_anime(mal_id: int):
         return r.json().get("data", {})
     except Exception:
         return {}
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def jikan_recommendations(mal_id: int):
-    try:
-        r = requests.get(f"{JIKAN}/anime/{mal_id}/recommendations", timeout=10)
-        r.raise_for_status()
-        return r.json().get("data", [])[:12]
-    except Exception:
-        return []
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def jikan_top(limit: int = 50):
@@ -231,6 +220,32 @@ def jikan_genre(genre_id: int, limit: int = 20):
         return []
 
 
+# -- Our own API (the trained hybrid model)
+
+def api_recommend(anime_name: str, k: int = 10):
+    """Calls our trained hybrid model. Returns the parsed response, or
+    a dict with an 'error' key if the anime wasn't found or the API
+    isn't reachable."""
+    try:
+        r = requests.post(f"{API_BASE}/recommend", json={"anime_name": anime_name, "k": k}, timeout=10)
+        if r.status_code == 404:
+            return {"error": r.json().get("detail", "That anime isn't in our trained dataset.")}
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.RequestException:
+        return {"error": "Couldn't reach the recommendation API. Make sure it's running."}
+
+def api_anime(anime_id: int):
+    """Fallback lookup against our own dataset, used when Jikan doesn't
+    have (or no longer has) an anime_id our model recommended."""
+    try:
+        r = requests.get(f"{API_BASE}/anime/{anime_id}", timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.RequestException:
+        return {}
+
+
 # -- UI helpers
 
 def page_header(title: str, subtitle: str):
@@ -252,16 +267,18 @@ def render_cards(anime_list: list, cols: int = 5):
             img = a.get("images", {}).get("jpg", {}).get("large_image_url", "")
             title = a.get("title", "Unknown")
             score = a.get("score")
+            match = a.get("hybrid_match")
             genres = ", ".join(g["name"] for g in a.get("genres", [])[:2])
             episodes = a.get("episodes") or "?"
             url = a.get("url", "#")
             with col:
                 if img:
                     st.image(img, use_container_width=True)
+                match_html = f'<span class="score-badge">🎯 {match:.0%}</span>' if match is not None else ""
                 score_html = f'<span class="score-badge">★ {score}</span>' if score else ""
                 st.markdown(
                     f'<div class="card-title"><a href="{url}" target="_blank" style="color:var(--text);text-decoration:none;">{title}</a></div>'
-                    f'<div class="card-meta">{score_html}{episodes} ep · {genres}</div>',
+                    f'<div class="card-meta">{match_html}{score_html}{episodes} ep · {genres}</div>',
                     unsafe_allow_html=True
                 )
 
@@ -269,8 +286,8 @@ def render_cards(anime_list: list, cols: int = 5):
 # -- Pages
 
 def page_community(n_recs=10):
-    page_header("Who Else Watched This?", "Find what fans of your favourite anime also loved")
-    info_box("Pick any anime and we'll show you what its fans recommend, based on real MyAnimeList community votes.")
+    page_header("Because You Liked...", "Recommendations from our own trained hybrid model")
+    info_box("Pick any anime and our hybrid model, collaborative filtering, content embeddings, and popularity trained on real MyAnimeList ratings, finds what to watch next. The 🎯 badge shows how strong the match is.")
 
     query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
     if not query:
@@ -288,99 +305,43 @@ def page_community(n_recs=10):
         st.error("No anime found. Try a different spelling.")
         return
 
-    options = {f"{a['title']}  ({a.get('year') or '?'})": a["mal_id"] for a in results}
+    options = {f"{a['title']}  ({a.get('year') or '?'})": a["title"] for a in results}
     chosen_label = st.selectbox("", list(options.keys()), label_visibility="collapsed")
-    chosen_id = options[chosen_label]
-    chosen_title = chosen_label.split("  (")[0]
+    chosen_title = options[chosen_label]
 
     if st.button("Find Recommendations"):
-        with st.spinner("Fetching community picks..."):
-            recs = jikan_recommendations(chosen_id)
+        with st.spinner("Scoring against our trained model..."):
+            payload = api_recommend(chosen_title, n_recs)
 
-        if not recs:
-            st.warning("No community recommendations found for this title yet.")
+        if "error" in payload:
+            st.error(payload["error"])
+            return
+        if not payload["recommendations"]:
+            st.warning("No recommendations found for this title.")
             return
 
-        st.markdown(f"#### Fans of **{chosen_title}** also loved:")
-        details = []
-        for rec in recs[:n_recs]:
-            mid = rec.get("entry", {}).get("mal_id")
-            if mid:
-                d = jikan_anime(mid)
+        with st.spinner("Fetching details..."):
+            details = []
+            for rec in payload["recommendations"]:
+                d = jikan_anime(rec["anime_id"])
+                if not d:
+                    # Jikan doesn't have this id (delisted/renamed), fall
+                    # back to our own dataset so the card still shows.
+                    local = api_anime(rec["anime_id"])
+                    if local:
+                        d = {
+                            "title": local.get("name", rec["title"]),
+                            "score": local.get("rating"),
+                            "episodes": local.get("episodes"),
+                            "genres": [{"name": g.strip()} for g in (local.get("genre") or "").split(",") if g.strip()],
+                        }
                 if d:
+                    d = dict(d)
+                    d["hybrid_match"] = rec["hybrid_score"]
                     details.append(d)
 
+        st.markdown(f"#### Because you liked **{payload['query_title']}**:")
         render_cards(details, cols=5)
-
-
-def page_similar(n_recs=10):
-    page_header("Similar Vibes", "Discover anime that feel just like the one you love")
-    info_box("We match anime by their genres and themes. Great for when you want \"more of this energy\" but don't know what to watch next.")
-
-    query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
-    if not query:
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("##### 🏆 Top rated anime")
-        with st.spinner("Loading..."):
-            top = jikan_top(limit=10)
-        render_cards(top, cols=5)
-        return
-
-    with st.spinner("Searching..."):
-        results = jikan_search(query, limit=10)
-
-    if not results:
-        st.error("No anime found. Try a different spelling.")
-        return
-
-    options = {f"{a['title']}  ({a.get('year') or '?'})": a for a in results}
-    chosen_label = st.selectbox("", list(options.keys()), label_visibility="collapsed")
-    chosen = options[chosen_label]
-
-    if st.button("Find Similar Anime"):
-        with st.spinner("Analysing genres..."):
-            pool = jikan_top(limit=50)
-            chosen_id = chosen["mal_id"]
-            pool_ids = {a["mal_id"] for a in pool}
-            if chosen_id not in pool_ids:
-                pool = [chosen] + pool
-
-            def genre_str(a):
-                g = " ".join(x["name"] for x in a.get("genres", []))
-                t = " ".join(x["name"] for x in a.get("themes", []))
-                return f"{g} {t}".strip() or "unknown"
-
-            df = pd.DataFrame([{
-                "mal_id": a["mal_id"],
-                "title": a["title"],
-                "g": genre_str(a),
-                "_d": a
-            } for a in pool]).drop_duplicates("mal_id").reset_index(drop=True)
-
-            tfidf = TfidfVectorizer(stop_words="english")
-            matrix = tfidf.fit_transform(df["g"])
-            sim = linear_kernel(matrix, matrix)
-
-            idx_list = df.index[df["mal_id"] == chosen_id].tolist()
-            if not idx_list:
-                st.warning("Couldn't find this anime in our current pool. Try again shortly.")
-                return
-
-            idx = idx_list[0]
-            scores = sorted(enumerate(sim[idx]), key=lambda x: x[1], reverse=True)
-            top_idx = [i for i, _ in scores if i != idx][:n_recs]
-            similar = [df.iloc[i]["_d"] for i in top_idx]
-            top_scores = [s for i, s in scores if i != idx][:n_recs]
-
-        st.markdown(f"#### Anime with a similar vibe to **{chosen['title']}**:")
-        render_cards(similar, cols=5)
-
-        if top_scores:
-            st.markdown("---")
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Avg Match Score", f"{sum(top_scores)/len(top_scores):.0%}")
-            c2.metric("Top Match", f"{top_scores[0]:.0%}", similar[0]["title"] if similar else "")
-            c3.metric("Results Found", len(similar))
 
 
 def page_browse():
@@ -452,7 +413,6 @@ with st.sidebar:
         "",
         [
             "🎯  Because You Liked...",
-            "🎭  Similar Vibes",
             "🎲  Browse by Mood",
             "📡  Airing Now",
             "🏆  All-Time Greatest",
@@ -476,8 +436,6 @@ with st.sidebar:
 
 if "Because You Liked" in page:
     page_community(n_recs)
-elif "Similar Vibes" in page:
-    page_similar(n_recs)
 elif "Browse by Mood" in page:
     page_browse()
 elif "Airing Now" in page:
