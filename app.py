@@ -166,8 +166,8 @@ div[data-testid="stButton"] > button:hover {
 /* Spinner / status */
 div[data-testid="stSpinner"] { color: var(--accent) !important; }
 
-/* Hide Streamlit branding */
-#MainMenu, footer, header { visibility: hidden; }
+/* Hide Streamlit branding, keep the header so the sidebar toggle still works */
+#MainMenu, footer { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -253,9 +253,6 @@ def page_header(title: str, subtitle: str):
     st.markdown(f'<div class="page-sub">{subtitle}</div>', unsafe_allow_html=True)
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-def info_box(text: str):
-    st.markdown(f'<div class="info-box">{text}</div>', unsafe_allow_html=True)
-
 def render_cards(anime_list: list, cols: int = 5):
     if not anime_list:
         st.warning("Nothing to show right now. Try a different search.")
@@ -273,7 +270,7 @@ def render_cards(anime_list: list, cols: int = 5):
             url = a.get("url", "#")
             with col:
                 if img:
-                    st.image(img, use_container_width=True)
+                    st.image(img, width="stretch")
                 match_html = f'<span class="score-badge">🎯 {match:.0%}</span>' if match is not None else ""
                 score_html = f'<span class="score-badge">★ {score}</span>' if score else ""
                 st.markdown(
@@ -286,8 +283,7 @@ def render_cards(anime_list: list, cols: int = 5):
 # -- Pages
 
 def page_community(n_recs=10):
-    page_header("Because You Liked...", "Recommendations from our own trained hybrid model")
-    info_box("Pick any anime and our hybrid model, collaborative filtering, content embeddings, and popularity trained on real MyAnimeList ratings, finds what to watch next. The 🎯 badge shows how strong the match is.")
+    page_header("Because You Liked...", "Pick a show, get similar picks")
 
     query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
     if not query:
@@ -361,7 +357,7 @@ def page_browse():
     cols = st.columns(4)
     selected_mood = None
     for i, (label, gid) in enumerate(MOODS.items()):
-        if cols[i % 4].button(label, use_container_width=True):
+        if cols[i % 4].button(label, width="stretch"):
             selected_mood = (label, gid)
             st.session_state["mood_label"] = label
             st.session_state["mood_id"] = gid
@@ -425,9 +421,9 @@ with st.sidebar:
     st.markdown("---")
     col1, col2 = st.columns(2)
     with col1:
-        st.link_button("GitHub", "https://github.com/mayankbungla/Anime_recommender", use_container_width=True)
+        st.link_button("GitHub", "https://github.com/mayankbungla/Anime_recommender", width="stretch")
     with col2:
-        st.link_button("Dataset", "https://www.kaggle.com/datasets/CooperUnion/anime-recommendations-database", use_container_width=True)
+        st.link_button("Dataset", "https://www.kaggle.com/datasets/CooperUnion/anime-recommendations-database", width="stretch")
     st.markdown("---")
     st.markdown('<p style="font-size:0.72rem;color:#555;text-align:center;">Powered by MyAnimeList</p>', unsafe_allow_html=True)
 
