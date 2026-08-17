@@ -3,38 +3,31 @@ Live data from the Jikan API, used only for display metadata and for
 widening the candidate pool with brand-new anime the local Kaggle-based
 catalogue doesn't know about yet. Never used to score or rank anything,
 that stays entirely with the trained CF, content, and popularity signals.
+
+Uses the same retrying JikanClient as jikan_client.py (Day 39) instead
+of making its own raw requests calls.
 """
 
-import requests
-
-JIKAN = "https://api.jikan.moe/v4"
+from anime_recommender.data.jikan_client import client
 
 
 def get_live_metadata(mal_id: int) -> dict:
     """Poster, current score, and airing status for one anime, for
     display only, has no effect on any score used elsewhere."""
-    try:
-        r = requests.get(f"{JIKAN}/anime/{mal_id}", timeout=10)
-        r.raise_for_status()
-        data = r.json().get("data", {})
-        return {
-            "poster_url": (data.get("images", {}).get("jpg") or {}).get("image_url"),
-            "score": data.get("score"),
-            "airing_status": data.get("status"),
-        }
-    except Exception:
+    data = client.anime(mal_id)
+    if not data:
         return {}
+    return {
+        "poster_url": (data.get("images", {}).get("jpg") or {}).get("image_url"),
+        "score": data.get("score"),
+        "airing_status": data.get("status"),
+    }
 
 
 def get_cold_start_candidates(n: int = 20) -> list[dict]:
     """Currently trending anime from Jikan, used to widen recommendation
     candidates for titles too new to be in the local dataset at all."""
-    try:
-        r = requests.get(f"{JIKAN}/top/anime", params={"limit": n}, timeout=10)
-        r.raise_for_status()
-        return r.json().get("data", [])
-    except Exception:
-        return []
+    return client.top(n)
 
 
 def add_cold_start_candidates(local_candidate_ids: list, n: int = 20) -> list:
