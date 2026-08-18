@@ -1,7 +1,15 @@
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+
 import streamlit as st
 import requests
 
-JIKAN = "https://api.jikan.moe/v4"
+from anime_recommender.data.jikan_client import (
+    jikan_search, jikan_anime, jikan_top, jikan_season_now, jikan_genre,
+)
+
 API_BASE = "http://127.0.0.1:8000"  # FastAPI backend, see src/anime_recommender/api
 
 st.set_page_config(
@@ -170,54 +178,6 @@ div[data-testid="stSpinner"] { color: var(--accent) !important; }
 #MainMenu, footer { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
-
-
-# -- Jikan API helpers (live display metadata, never used for ranking)
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def jikan_search(query: str, limit: int = 12):
-    try:
-        r = requests.get(f"{JIKAN}/anime", params={"q": query, "limit": limit, "sfw": True}, timeout=10)
-        r.raise_for_status()
-        return r.json().get("data", [])
-    except Exception:
-        return []
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def jikan_anime(mal_id: int):
-    try:
-        r = requests.get(f"{JIKAN}/anime/{mal_id}", timeout=10)
-        r.raise_for_status()
-        return r.json().get("data", {})
-    except Exception:
-        return {}
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def jikan_top(limit: int = 50):
-    try:
-        r = requests.get(f"{JIKAN}/top/anime", params={"limit": limit}, timeout=10)
-        r.raise_for_status()
-        return r.json().get("data", [])
-    except Exception:
-        return []
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def jikan_season_now(limit: int = 20):
-    try:
-        r = requests.get(f"{JIKAN}/seasons/now", params={"limit": limit}, timeout=10)
-        r.raise_for_status()
-        return r.json().get("data", [])
-    except Exception:
-        return []
-
-@st.cache_data(ttl=3600, show_spinner=False)
-def jikan_genre(genre_id: int, limit: int = 20):
-    try:
-        r = requests.get(f"{JIKAN}/anime", params={"genres": genre_id, "order_by": "score", "sort": "desc", "limit": limit, "sfw": True}, timeout=10)
-        r.raise_for_status()
-        return r.json().get("data", [])
-    except Exception:
-        return []
 
 
 # -- Our own API (the trained hybrid model)
