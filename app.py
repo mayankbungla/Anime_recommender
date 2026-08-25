@@ -9,6 +9,7 @@ import requests
 from anime_recommender.data.jikan_client import (
     jikan_search, jikan_anime, jikan_top, jikan_season_now, jikan_genre,
 )
+from anime_recommender.data.metadata_provider import get_top, get_search, get_catalogue, get_all_paginated
 
 API_BASE = "http://127.0.0.1:8000"  # FastAPI backend, see src/anime_recommender/api
 
@@ -242,6 +243,54 @@ def render_cards(anime_list: list, cols: int = 5):
 
 # -- Pages
 
+def page_browse_all():
+    page_header("Browse Catalogue", "Explore the full collection")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        sort_by = st.selectbox("Sort by", ["rating", "members", "episodes", "name"], key="sort_by")
+    with col2:
+        sort_order = st.selectbox("Order", ["Highest to Lowest", "Lowest to Highest"], key="sort_order")
+    with col3:
+        page_size = st.selectbox("Per page", [25, 50, 100], key="page_size")
+    
+    col_g, col_t = st.columns(2)
+    with col_g:
+        genre_filter = st.text_input("Filter by genre (optional)", key="genre_filter")
+    with col_t:
+        type_filter = st.selectbox("Filter by type", ["All", "TV", "Movie", "OVA", "Special"], key="type_filter")
+    
+    if type_filter == "All":
+        type_filter = ""
+    
+    sort_order_value = "asc" if "Lowest" in sort_order else "desc"
+    
+    total, total_pages, current_page, results = get_all_paginated(
+        page=st.session_state.get("current_page", 1),
+        page_size=page_size,
+        sort_by=sort_by,
+        sort_order=sort_order_value,
+        genre_filter=genre_filter,
+        type_filter=type_filter,
+    )
+    
+    st.write(f"Showing {len(results)} of {total} anime | Page {current_page}/{total_pages}")
+    
+    render_cards(results, cols=5)
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        if current_page > 1 and st.button("← Previous"):
+            st.session_state.current_page = current_page - 1
+            st.rerun()
+    with col3:
+        st.write(f"Page {current_page}/{total_pages}")
+    with col5:
+        if current_page < total_pages and st.button("Next →"):
+            st.session_state.current_page = current_page + 1
+            st.rerun()
+
+
 def page_community(n_recs=10):
     page_header("Because You Liked...", "Pick a show, get similar picks")
 
@@ -255,7 +304,7 @@ def page_community(n_recs=10):
         return
 
     with st.spinner("Searching..."):
-        results = jikan_search(query, limit=10)
+        results = get_search(query, limit=12)
 
     if not results:
         st.error("No anime found. Try a different spelling.")
@@ -348,14 +397,84 @@ def page_airing():
 def page_top():
     page_header("All-Time Greatest", "The highest-rated anime of all time, as voted by millions")
 
-    with st.spinner("Loading..."):
-        results = jikan_top(limit=50)
+    if "top_page" not in st.session_state:
+        st.session_state.top_page = 1
+    if "top_results" not in st.session_state:
+        st.session_state.top_results = []
 
-    if not results:
+    if st.session_state.top_page == 1 or not st.session_state.top_results:
+        with st.spinner("Loading..."):
+            st.session_state.top_results = get_top(limit=500)
+
+    if not st.session_state.top_results:
         st.warning("Couldn't load rankings right now. Please try again in a moment.")
         return
 
+    per_page = 50
+    total = len(st.session_state.top_results)
+    total_pages = (total + per_page - 1) // per_page
+    current_page = st.session_state.top_page
+
+    start = (current_page - 1) * per_page
+    end = start + per_page
+    page_results = st.session_state.top_results[start:end]
+
+    st.markdown(f"<div style='text-align:center;color:#888;font-size:0.9rem;'>Page {current_page} of {total_pages} ({total} total)</div>", unsafe_allow_html=True)
+
+    render_cards(page_results, cols=5)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if current_page > 1:
+            if st.button("← Previous", key="top_prev"):
+                st.session_state.top_page -= 1
+                st.rerun()
+    with col3:
+        if current_page < total_pages:
+            if st.button("Next →", key="top_next"):
+                st.session_state.top_page += 1
+                st.rerun()
+
+
+def page_catalogue():
+    page_header("Browse Catalogue", "Explore the full dataset")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        sort_by = st.selectbox("Sort by", ["Rating", "Popularity", "Episodes", "Title"], key="cat_sort")
+    with col2:
+        genre_filter = st.text_input("Filter by genre", placeholder="e.g., Action", key="cat_genre")
+    with col3:
+        per_page = st.number_input("Per page", min_value=10, max_value=500, value=50, step=10, key="cat_perpage")
+
+    sort_map = {"Rating": "rating", "Popularity": "popularity", "Episodes": "episodes", "Title": "title"}
+    sort_key = sort_map[sort_by]
+
+    if "catalogue_page" not in st.session_state:
+        st.session_state.catalogue_page = 1
+
+    with st.spinner("Loading..."):
+        results, total, total_pages = get_catalogue(sort_by=sort_key, genre_filter=genre_filter or None, page=st.session_state.catalogue_page, per_page=per_page)
+
+    if total == 0:
+        st.warning("No anime found matching that filter.")
+        return
+
+    st.markdown(f"<div style='text-align:center;color:#888;font-size:0.9rem;'>{total} total • Page {st.session_state.catalogue_page} of {total_pages}</div>", unsafe_allow_html=True)
+
     render_cards(results, cols=5)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.session_state.catalogue_page > 1:
+            if st.button("← Previous", key="cat_prev"):
+                st.session_state.catalogue_page -= 1
+                st.rerun()
+    with col3:
+        if st.session_state.catalogue_page < total_pages:
+            if st.button("Next →", key="cat_next"):
+                st.session_state.catalogue_page += 1
+                st.rerun()
 
 
 # -- Sidebar
@@ -370,6 +489,7 @@ with st.sidebar:
         [
             "🎯  Because You Liked...",
             "🎲  Browse by Mood",
+            "📚  Browse Catalogue",
             "📡  Airing Now",
             "🏆  All-Time Greatest",
         ],
@@ -394,6 +514,8 @@ if "Because You Liked" in page:
     page_community(n_recs)
 elif "Browse by Mood" in page:
     page_browse()
+elif "Browse Catalogue" in page:
+    page_catalogue()
 elif "Airing Now" in page:
     page_airing()
 elif "All-Time Greatest" in page:
