@@ -30,6 +30,22 @@ query ($perPage: Int) {
 }
 """
 
+SEARCH_QUERY = """
+query ($search: String, $perPage: Int) {
+  Page(perPage: $perPage) {
+    media(type: ANIME, search: $search) {
+      idMal
+      title { romaji english }
+      coverImage { large }
+      averageScore
+      episodes
+      genres
+      siteUrl
+    }
+  }
+}
+"""
+
 
 def _to_card(item: dict) -> dict:
     """Reshapes one AniList media record into the card format used
@@ -80,9 +96,21 @@ class AniListClient:
         media = data.get("data", {}).get("Page", {}).get("media", [])
         return [_to_card(item) for item in media if item.get("idMal")]
 
+    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    def _fetch_search(self, query: str, limit: int) -> list:
+        data = self._post(SEARCH_QUERY, {"search": query, "perPage": limit})
+        media = data.get("data", {}).get("Page", {}).get("media", [])
+        return [_to_card(item) for item in media if item.get("idMal")]
+
     def top(self, limit: int = 50) -> list:
         try:
             return self._fetch_top(limit)
+        except requests.exceptions.RequestException:
+            return []
+
+    def search(self, query: str, limit: int = 12) -> list:
+        try:
+            return self._fetch_search(query, limit)
         except requests.exceptions.RequestException:
             return []
 
