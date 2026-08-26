@@ -232,6 +232,17 @@ def render_cards(anime_list: list, cols: int = 5):
             with col:
                 if img:
                     st.image(img, width="stretch")
+                else:
+                    # no poster available (Browse Catalogue's local data has
+                    # no image column) - show a placeholder instead of blank space
+                    st.markdown(
+                        '<div style="aspect-ratio:2/3;border-radius:6px;'
+                        'background:linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%);'
+                        'display:flex;align-items:center;justify-content:center;">'
+                        f'<span style="font-family:\'Bebas Neue\',sans-serif;font-size:2.4rem;color:#fff;opacity:0.85;">{title[:1].upper()}</span>'
+                        '</div>',
+                        unsafe_allow_html=True,
+                    )
                 match_html = f'<span class="score-badge">🎯 {match:.0%}</span>' if match is not None else ""
                 score_html = f'<span class="score-badge">★ {score}</span>' if score else ""
                 st.markdown(
