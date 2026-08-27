@@ -6,6 +6,7 @@ local dataset as fallbacks when unavailable.
 
 import operator
 import threading
+import time
 
 import requests
 from cachetools import TTLCache, cachedmethod
@@ -14,10 +15,36 @@ from urllib3.util.retry import Retry
 
 ANILIST_URL = "https://graphql.anilist.co"
 
+# AniList caps each page well short of what a browse view needs, and its
+# public API is currently rate-limited to 30 requests/minute (degraded
+# state, see docs.anilist.co/guide/rate-limiting), so pagination here is
+# deliberately shallow rather than trying to pull the whole catalogue.
+PER_PAGE = 50
+MAX_PAGES = 4
+PAGE_DELAY = 0.35  # stays clear of AniList's burst limiter between pages
+
 TOP_QUERY = """
-query ($perPage: Int) {
-  Page(perPage: $perPage) {
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage }
     media(type: ANIME, sort: SCORE_DESC) {
+      idMal
+      title { romaji english }
+      coverImage { large }
+      averageScore
+      episodes
+      genres
+      siteUrl
+    }
+  }
+}
+"""
+
+GENRE_QUERY = """
+query ($genre: String, $page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage }
+    media(type: ANIME, genre: $genre, sort: SCORE_DESC) {
       idMal
       title { romaji english }
       coverImage { large }
@@ -90,11 +117,32 @@ class AniListClient:
         r.raise_for_status()
         return r.json()
 
+    def _fetch_paged(self, query: str, variables: dict, limit: int) -> list:
+        """Collects up to `limit` items across multiple AniList pages.
+        A single Page(perPage=...) call caps out well short of a real
+        browse-sized list, so this loops until enough items are in hand,
+        the API says there's no next page, or MAX_PAGES is hit."""
+        items = []
+        page = 1
+        while len(items) < limit and page <= MAX_PAGES:
+            if page > 1:
+                time.sleep(PAGE_DELAY)
+            data = self._post(query, {**variables, "page": page, "perPage": PER_PAGE})
+            page_data = data.get("data", {}).get("Page", {})
+            media = page_data.get("media", [])
+            items.extend(_to_card(item) for item in media if item.get("idMal"))
+            if not page_data.get("pageInfo", {}).get("hasNextPage"):
+                break
+            page += 1
+        return items[:limit]
+
     @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
     def _fetch_top(self, limit: int) -> list:
-        data = self._post(TOP_QUERY, {"perPage": limit})
-        media = data.get("data", {}).get("Page", {}).get("media", [])
-        return [_to_card(item) for item in media if item.get("idMal")]
+        return self._fetch_paged(TOP_QUERY, {}, limit)
+
+    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    def _fetch_genre(self, genre: str, limit: int) -> list:
+        return self._fetch_paged(GENRE_QUERY, {"genre": genre}, limit)
 
     @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
     def _fetch_search(self, query: str, limit: int) -> list:
@@ -105,6 +153,12 @@ class AniListClient:
     def top(self, limit: int = 50) -> list:
         try:
             return self._fetch_top(limit)
+        except requests.exceptions.RequestException:
+            return []
+
+    def genre(self, genre: str, limit: int = 20) -> list:
+        try:
+            return self._fetch_genre(genre, limit)
         except requests.exceptions.RequestException:
             return []
 
