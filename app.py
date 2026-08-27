@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -6,12 +7,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 import streamlit as st
 import requests
 
-from anime_recommender.data.jikan_client import (
-    jikan_search, jikan_anime, jikan_top, jikan_season_now, jikan_genre,
+from anime_recommender.data.jikan_client import jikan_anime, jikan_season_now
+from anime_recommender.data.metadata_provider import (
+    get_top, get_search, get_catalogue, get_all_paginated, get_by_genre,
 )
-from anime_recommender.data.metadata_provider import get_top, get_search, get_catalogue, get_all_paginated
 
-API_BASE = "http://127.0.0.1:8000"  # FastAPI backend, see src/anime_recommender/api
+# set API_BASE in the deployment environment once the FastAPI backend has
+# a real address; localhost only works when both run on one machine
+API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:8000")
 
 st.set_page_config(
     page_title="Anime Recs",
@@ -310,7 +313,7 @@ def page_community(n_recs=10):
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("##### 🔥 Popular right now")
         with st.spinner("Loading..."):
-            top = jikan_top(limit=10)
+            top = get_top(limit=10)
         render_cards(top, cols=5)
         return
 
@@ -364,30 +367,28 @@ def page_browse():
     page_header("Browse by Mood", "Not sure what you want? Start with a feeling.")
 
     MOODS = {
-        "⚔️  Action & Hype": 1,
-        "💘  Romance & Feels": 22,
-        "😂  Comedy & Chill": 4,
-        "🔮  Fantasy & Magic": 10,
-        "🤯  Mystery & Thriller": 7,
-        "🤖  Sci-Fi & Mecha": 24,
-        "👻  Horror & Dark": 14,
-        "🏆  Sports & Hustle": 30,
+        "⚔️  Action & Hype": ("Action", 1),
+        "💘  Romance & Feels": ("Romance", 22),
+        "😂  Comedy & Chill": ("Comedy", 4),
+        "🔮  Fantasy & Magic": ("Fantasy", 10),
+        "🤯  Mystery & Thriller": ("Mystery", 7),
+        "🤖  Sci-Fi & Mecha": ("Sci-Fi", 24),
+        "👻  Horror & Dark": ("Horror", 14),
+        "🏆  Sports & Hustle": ("Sports", 30),
     }
 
     cols = st.columns(4)
-    selected_mood = None
-    for i, (label, gid) in enumerate(MOODS.items()):
+    for i, (label, genre_ids) in enumerate(MOODS.items()):
         if cols[i % 4].button(label, width="stretch"):
-            selected_mood = (label, gid)
             st.session_state["mood_label"] = label
-            st.session_state["mood_id"] = gid
+            st.session_state["mood_genre"] = genre_ids
 
-    if "mood_id" in st.session_state:
+    if "mood_genre" in st.session_state:
         label = st.session_state["mood_label"]
-        gid = st.session_state["mood_id"]
+        anilist_genre, jikan_genre_id = st.session_state["mood_genre"]
         st.markdown(f"#### Top picks for: **{label}**")
         with st.spinner("Loading..."):
-            results = jikan_genre(gid, limit=20)
+            results = get_by_genre(anilist_genre, jikan_genre_id, limit=60)
         render_cards(results, cols=5)
 
 
