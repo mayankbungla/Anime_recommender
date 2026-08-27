@@ -82,6 +82,42 @@ def get_search(query: str, limit: int = 12) -> list:
     return _local_search(query, limit)
 
 
+def _local_by_genre(genre_name: str, limit: int) -> list:
+    """Anime tagged with one genre from the stored dataset. Used only
+    when live sources are unavailable, carries no poster image."""
+    matches = _anime_clean[_anime_clean["genre"].str.contains(genre_name, case=False, na=False, regex=False)]
+    matches = matches.sort_values("rating", ascending=False, na_position="last").head(limit)
+
+    return [
+        {
+            "mal_id": int(row["anime_id"]),
+            "title": html.unescape(str(row["name"])),
+            "images": {"jpg": {"large_image_url": ""}},
+            "score": row.get("rating"),
+            "episodes": row.get("episodes"),
+            "genres": [{"name": html.unescape(g.strip())} for g in str(row.get("genre") or "").split(",") if g.strip()],
+            "url": "#",
+        }
+        for _, row in matches.iterrows()
+    ]
+
+
+def get_by_genre(anilist_genre: str, jikan_genre_id: int, limit: int = 50) -> list:
+    """Anime tagged with one genre/mood. Tries AniList (paginated, so a
+    real browse-sized list comes back), then Jikan (single page, ~25
+    max), then the local dataset (unlimited, just a genre substring
+    match), in that order."""
+    result = anilist_client.genre(anilist_genre, limit)
+    if result:
+        return result
+
+    result = jikan_client.genre(jikan_genre_id, limit)
+    if result:
+        return result
+
+    return _local_by_genre(anilist_genre, limit)
+
+
 def get_catalogue(sort_by: str = "rating", genre_filter: str = None, page: int = 1, per_page: int = 50) -> tuple:
     """Get paginated full catalogue. Returns (list of anime, total_count, total_pages).
     sort_by: 'rating', 'popularity' (members), 'episodes', 'title'
