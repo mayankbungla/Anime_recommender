@@ -11,10 +11,14 @@ from anime_recommender.data.jikan_client import jikan_anime, jikan_season_now
 from anime_recommender.data.metadata_provider import (
     get_top, get_search, get_catalogue, get_all_paginated, get_by_genre,
 )
+from anime_recommender.data import tracking
 
 # set API_BASE in the deployment environment once the FastAPI backend has
 # a real address; localhost only works when both run on one machine
 API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:8000")
+
+if "session_id" not in st.session_state:
+    st.session_state.session_id = tracking.new_session_id()
 
 st.set_page_config(
     page_title="Anime Recs",
@@ -217,16 +221,22 @@ def page_header(title: str, subtitle: str):
     st.markdown(f'<div class="page-sub">{subtitle}</div>', unsafe_allow_html=True)
     st.markdown('<hr class="divider">', unsafe_allow_html=True)
 
-def render_cards(anime_list: list, cols: int = 5):
+def render_cards(anime_list: list, cols: int = 5, source_page: str = "unknown"):
     if not anime_list:
         st.warning("Nothing to show right now. Try a different search.")
         return
+
+    tracking.log_shown(anime_list, source_page, st.session_state.session_id)
+
     groups = [anime_list[i:i+cols] for i in range(0, len(anime_list), cols)]
+    idx = 0
     for group in groups:
         columns = st.columns(cols)
         for col, a in zip(columns, group):
+            idx += 1
             img = a.get("images", {}).get("jpg", {}).get("large_image_url", "")
             title = a.get("title", "Unknown")
+            anime_id = a.get("mal_id")
             score = a.get("score")
             match = a.get("hybrid_match")
             genres = ", ".join(g["name"] for g in a.get("genres", [])[:2])
@@ -253,6 +263,12 @@ def render_cards(anime_list: list, cols: int = 5):
                     f'<div class="card-meta">{match_html}{score_html}{episodes} ep · {genres}</div>',
                     unsafe_allow_html=True
                 )
+                # a real MAL/AniList link opens in a new tab, so a click on
+                # it can't be logged server-side without a JS component;
+                # this button is a lightweight, trackable stand-in signal
+                if anime_id is not None and st.button("👍", key=f"like_{source_page}_{anime_id}_{idx}"):
+                    tracking.log_click(anime_id, title, source_page, st.session_state.session_id)
+                    st.toast(f"Noted — {title}")
 
 
 # -- Pages
@@ -290,9 +306,7 @@ def page_browse_all():
     
     st.write(f"Showing {len(results)} of {total} anime | Page {current_page}/{total_pages}")
     
-    render_cards(results, cols=5)
-    
-    col1, col2, col3, col4, col5 = st.columns(5)
+    render_cards(results, cols=5, source_page="browse_catalogue")
     with col1:
         if current_page > 1 and st.button("← Previous"):
             st.session_state.current_page = current_page - 1
@@ -314,8 +328,7 @@ def page_community(n_recs=10):
         st.markdown("##### 🔥 Popular right now")
         with st.spinner("Loading..."):
             top = get_top(limit=10)
-        render_cards(top, cols=5)
-        return
+        render_cards(top, cols=5, source_page="because_you_liked_popular")
 
     with st.spinner("Searching..."):
         results = get_search(query, limit=12)
@@ -349,6 +362,7 @@ def page_community(n_recs=10):
                     local = api_anime(rec["anime_id"])
                     if local:
                         d = {
+                            "mal_id": rec["anime_id"],
                             "title": local.get("name", rec["title"]),
                             "score": local.get("rating"),
                             "episodes": local.get("episodes"),
@@ -360,10 +374,7 @@ def page_community(n_recs=10):
                     details.append(d)
 
         st.markdown(f"#### Because you liked **{payload['query_title']}**:")
-        render_cards(details, cols=5)
-
-
-def page_browse():
+        render_cards(details, cols=5, source_page="because_you_liked_recommend")
     page_header("Browse by Mood", "Not sure what you want? Start with a feeling.")
 
     MOODS = {
@@ -389,10 +400,7 @@ def page_browse():
         st.markdown(f"#### Top picks for: **{label}**")
         with st.spinner("Loading..."):
             results = get_by_genre(anilist_genre, jikan_genre_id, limit=60)
-        render_cards(results, cols=5)
-
-
-def page_airing():
+        render_cards(results, cols=5, source_page="browse_by_mood")
     page_header("Airing Now", "The freshest shows and what everyone is watching this season")
 
     with st.spinner("Fetching this season's anime..."):
@@ -403,7 +411,7 @@ def page_airing():
         return
 
     results_sorted = sorted(results, key=lambda x: x.get("score") or 0, reverse=True)
-    render_cards(results_sorted, cols=5)
+    render_cards(results_sorted, cols=5, source_page="airing_now")
 
 
 def page_top():
@@ -433,7 +441,7 @@ def page_top():
 
     st.markdown(f"<div style='text-align:center;color:#888;font-size:0.9rem;'>Page {current_page} of {total_pages} ({total} total)</div>", unsafe_allow_html=True)
 
-    render_cards(page_results, cols=5)
+    render_cards(page_results, cols=5, source_page="all_time_greatest")
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
@@ -474,7 +482,7 @@ def page_catalogue():
 
     st.markdown(f"<div style='text-align:center;color:#888;font-size:0.9rem;'>{total} total • Page {st.session_state.catalogue_page} of {total_pages}</div>", unsafe_allow_html=True)
 
-    render_cards(results, cols=5)
+    render_cards(results, cols=5, source_page="browse_catalogue")
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
