@@ -76,3 +76,18 @@ def log_click(anime_id: int, title: str, source_page: str, session_id: str) -> N
         conn.commit()
     finally:
         conn.close()
+
+
+def fetch_all_events() -> list:
+    """All logged events, oldest first. Backs Day 42's analytics page.
+    Small enough for a portfolio-scale log that no pagination is needed."""
+    conn = _connect()
+    try:
+        cur = conn.execute(
+            "SELECT ts, event_type, anime_id, title, source_page, session_id "
+            "FROM recommendation_events ORDER BY ts"
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+    finally:
+        conn.close()
