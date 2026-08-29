@@ -6,10 +6,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 import streamlit as st
 import requests
+import pandas as pd
 
 from anime_recommender.data.jikan_client import jikan_anime, jikan_season_now
 from anime_recommender.data.metadata_provider import (
-    get_top, get_search, get_catalogue, get_all_paginated, get_by_genre,
+    get_top, get_search, get_catalogue, get_all_paginated, get_by_genre, get_genres_for_ids,
 )
 from anime_recommender.data import tracking
 
@@ -497,6 +498,54 @@ def page_catalogue():
                 st.rerun()
 
 
+def page_analytics():
+    page_header("Analytics", "What's actually getting shown and clicked")
+
+    events = tracking.fetch_all_events()
+    if not events:
+        st.info("Nothing logged yet — browse a few pages first, then come back here.")
+        return
+
+    df = pd.DataFrame(events)
+    shown = df[df["event_type"] == "shown"]
+    clicked = df[df["event_type"] == "clicked"]
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Shown", len(shown))
+    c2.metric("Clicked", len(clicked))
+    c3.metric("Distinct anime shown", shown["anime_id"].nunique())
+    c4.metric("Sessions", df["session_id"].nunique())
+
+    st.markdown("---")
+    st.markdown("##### Most-recommended anime")
+    counts = (
+        shown.groupby(["anime_id", "title"]).size().rename("times_shown")
+        .reset_index().sort_values("times_shown", ascending=False).head(10)
+    )
+    if counts.empty:
+        st.write("No impressions logged yet.")
+    else:
+        st.dataframe(counts[["title", "times_shown"]], hide_index=True, width="stretch")
+
+    st.markdown("---")
+    st.markdown("##### Genre coverage")
+    st.caption("Genres of every anime shown so far, from the local dataset.")
+    genre_map = get_genres_for_ids(shown["anime_id"].unique().tolist())
+    genre_rows = []
+    for aid in shown["anime_id"]:
+        for g in str(genre_map.get(aid) or "").split(","):
+            g = g.strip()
+            if g:
+                genre_rows.append(g)
+
+    if not genre_rows:
+        st.write("None of the shown anime matched the local dataset (all came from live-only sources).")
+    else:
+        genre_counts = pd.Series(genre_rows).value_counts().head(15)
+        st.bar_chart(genre_counts)
+        st.caption(f"{genre_counts.index.nunique()} distinct genres represented so far.")
+
+
 # -- Sidebar
 
 with st.sidebar:
@@ -512,6 +561,7 @@ with st.sidebar:
             "📚  Browse Catalogue",
             "📡  Airing Now",
             "🏆  All-Time Greatest",
+            "📊  Analytics",
         ],
         label_visibility="collapsed"
     )
@@ -540,3 +590,5 @@ elif "Airing Now" in page:
     page_airing()
 elif "All-Time Greatest" in page:
     page_top()
+elif "Analytics" in page:
+    page_analytics()
