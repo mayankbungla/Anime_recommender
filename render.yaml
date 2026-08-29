@@ -3,7 +3,7 @@ services:
     name: anime-recommender-api
     env: python
     plan: free
-    buildCommand: "pip install -r requirements-api.txt"
+    buildCommand: "pip install -r requirements-api.txt && mkdir -p models && curl -L -o models/svd_cf_model.pkl https://github.com/mayankbungla/Anime_recommender/releases/download/v1-model/svd_cf_model.pkl"
     startCommand: "PYTHONPATH=src uvicorn anime_recommender.api.main:app --host 0.0.0.0 --port $PORT"
     envVars:
       - key: PYTHON_VERSION

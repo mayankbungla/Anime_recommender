@@ -25,5 +25,3 @@ Thumbs.db
 # PyCharm config
 .idea/
 
-# Pickle files
-models/svd_cf_model.pkl
