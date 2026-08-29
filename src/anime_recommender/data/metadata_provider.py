@@ -35,6 +35,13 @@ def _local_top(limit: int) -> list:
     ]
 
 
+def get_genres_for_ids(anime_ids: list) -> dict:
+    """anime_id -> genre string, for the given ids. Local-data only,
+    used by Day 42's analytics page, not by any live-display path."""
+    subset = _anime_clean[_anime_clean["anime_id"].isin(anime_ids)]
+    return dict(zip(subset["anime_id"], subset["genre"]))
+
+
 def get_top(limit: int = 50) -> list:
     """Top anime by score. Tries AniList, then Jikan, then the local
     dataset, in that order."""
