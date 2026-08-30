@@ -20,15 +20,22 @@ reg_all: regularization strength. Higher values penalize large factor
 USAGE
 -----
     python scripts/tune_cf.py
+
+Day 43 — each grid combination gets logged to MLflow as its own run
+(params + val RMSE/MAE), alongside the existing CSV output. Uses the
+same sqlite-backed store as train_cf.py, so all the tuning history
+sits in one place.
 """
 
 from pathlib import Path
 
+import mlflow
 import pandas as pd
 from surprise import Dataset, Reader, SVD, accuracy
 
 PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
 REPORTS_DIR = Path(__file__).resolve().parents[1] / "reports"
+MLFLOW_DB = Path(__file__).resolve().parents[1] / "mlflow.db"
 
 # Day 16 asks for 2-3 hyperparameters. We vary n_factors and reg_all,
 # holding n_epochs and lr_all fixed at the Day 15 baseline values.
@@ -48,6 +55,9 @@ def evaluate(model, df, label):
 
 
 def main():
+    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
+    mlflow.set_experiment("anime-recommender-cf")
+
     print("Loading processed data...")
     train_df = pd.read_parquet(PROCESSED_DIR / "ratings_train.parquet")
     val_df = pd.read_parquet(PROCESSED_DIR / "ratings_val.parquet")
@@ -59,17 +69,25 @@ def main():
     results = []
     for i, params in enumerate(GRID, 1):
         print(f"\n[{i}/{len(GRID)}] Training with n_factors={params['n_factors']}, reg_all={params['reg_all']}...")
-        model = SVD(
-            n_factors=params["n_factors"],
-            n_epochs=20,
-            lr_all=0.005,
-            reg_all=params["reg_all"],
-            random_state=42,
-        )
-        model.fit(trainset)
+        with mlflow.start_run(run_name=f"grid_{i}_nf{params['n_factors']}_reg{params['reg_all']}"):
+            mlflow.log_params({
+                "n_factors": params["n_factors"], "reg_all": params["reg_all"],
+                "n_epochs": 20, "lr_all": 0.005, "random_state": 42,
+            })
 
-        val_rmse, val_mae = evaluate(model, val_df, "val")
-        print(f"    val RMSE={val_rmse:.4f}  MAE={val_mae:.4f}")
+            model = SVD(
+                n_factors=params["n_factors"],
+                n_epochs=20,
+                lr_all=0.005,
+                reg_all=params["reg_all"],
+                random_state=42,
+            )
+            model.fit(trainset)
+
+            val_rmse, val_mae = evaluate(model, val_df, "val")
+            print(f"    val RMSE={val_rmse:.4f}  MAE={val_mae:.4f}")
+            mlflow.log_metric("val_rmse", val_rmse)
+            mlflow.log_metric("val_mae", val_mae)
 
         results.append({
             "n_factors": params["n_factors"],
