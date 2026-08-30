@@ -4,6 +4,10 @@ precision/recall/ndcg at k plus catalogue coverage. Loads the SVD model
 once and reuses it across every user, since reloading a 162MB pickle per
 user would make this impractically slow.
 
+Day 43 — logs each model's precision/recall/ndcg/coverage to MLflow as
+its own run, so the Week 4 comparison has real experiment history too,
+not just the CSV.
+
 USAGE
     python scripts/evaluate_models.py
 """
@@ -12,6 +16,7 @@ import sys
 from pathlib import Path
 
 import joblib
+import mlflow
 import numpy as np
 import pandas as pd
 
@@ -58,6 +63,9 @@ def content_recommend_for_user(content, liked_ids, seen_ids, k):
 
 
 def main():
+    mlflow.set_tracking_uri(f"sqlite:///{ROOT / 'mlflow.db'}")
+    mlflow.set_experiment("anime-recommender-eval")
+
     print("Loading data...")
     train = pd.read_parquet(PROCESSED_DIR / "ratings_train.parquet")
     test = pd.read_parquet(PROCESSED_DIR / "ratings_test.parquet")
@@ -135,6 +143,16 @@ def main():
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     summary.to_csv(OUT_PATH, index=False)
+
+    for _, row in summary.iterrows():
+        with mlflow.start_run(run_name=f"eval_{row['model']}"):
+            mlflow.log_param("model", row["model"])
+            mlflow.log_param("k", K)
+            mlflow.log_param("n_users", len(sample))
+            mlflow.log_metric("precision", row["precision"])
+            mlflow.log_metric("recall", row["recall"])
+            mlflow.log_metric("ndcg", row["ndcg"])
+            mlflow.log_metric("coverage", row["coverage"])
 
     print(f"\n{summary.to_string(index=False)}")
     print(f"\nSaved {OUT_PATH}")
