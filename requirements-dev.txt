@@ -13,3 +13,4 @@ sentence-transformers
 fastapi
 uvicorn
 httpx
+mlflow
