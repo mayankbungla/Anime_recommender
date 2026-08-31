@@ -1,7 +1,5 @@
 fastapi
 uvicorn[standard]
-joblib
-scikit-surprise
 scikit-learn
 numpy
 pandas
