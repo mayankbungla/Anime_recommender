@@ -21,6 +21,7 @@ request first pulls a shortlist from the CF and content neighbours,
 then re-ranks that smaller pool with the full hybrid formula.
 """
 
+import logging
 from pathlib import Path
 import sys
 
@@ -28,7 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from anime_recommender.api.schemas import (
     AnimeInfo,
@@ -50,7 +52,17 @@ ANIME_CLEAN_PATH = ROOT / "data" / "processed" / "anime_clean.parquet"
 
 SHORTLIST_SIZE = 50
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("anime_recommender.api")
+
 app = FastAPI(title="Anime Recommender API")
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    """Full traceback goes to the server log, the client only gets a generic message."""
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Something went wrong. Please try again later."})
 
 item_factors = np.load(FACTORS_DIR / "item_factors.npy")
 _item_id_map = pd.read_parquet(FACTORS_DIR / "item_id_map.parquet")
