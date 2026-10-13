@@ -1,4 +1,5 @@
 from pathlib import Path
+import logging
 import os
 import sys
 
@@ -7,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 import streamlit as st
 import requests
 import pandas as pd
+from dotenv import load_dotenv
 
 from anime_recommender.data.jikan_client import jikan_anime, jikan_season_now
 from anime_recommender.data.metadata_provider import (
@@ -14,8 +16,12 @@ from anime_recommender.data.metadata_provider import (
 )
 from anime_recommender.data import tracking
 
-# set API_BASE in the deployment environment once the FastAPI backend has
-# a real address; localhost only works when both run on one machine
+load_dotenv()
+logger = logging.getLogger(__name__)
+
+# set API_BASE in the deployment environment (or a local .env, see .env.example)
+# once the FastAPI backend has a real address; localhost only works when both
+# run on one machine
 API_BASE = os.environ.get("API_BASE", "http://127.0.0.1:8000")
 
 if "session_id" not in st.session_state:
@@ -201,7 +207,8 @@ def api_recommend(anime_name: str, k: int = 10):
             return {"error": r.json().get("detail", "That anime isn't in our trained dataset.")}
         r.raise_for_status()
         return r.json()
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as exc:
+        logger.warning("recommend call failed: %s", exc)
         return {"error": "Couldn't reach the recommendation API. Make sure it's running."}
 
 def api_anime(anime_id: int):
@@ -211,7 +218,8 @@ def api_anime(anime_id: int):
         r = requests.get(f"{API_BASE}/anime/{anime_id}", timeout=10)
         r.raise_for_status()
         return r.json()
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as exc:
+        logger.warning("anime lookup failed: %s", exc)
         return {}
 
 
