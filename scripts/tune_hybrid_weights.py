@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 import joblib
+import mlflow
 import numpy as np
 import pandas as pd
 
@@ -31,6 +32,7 @@ PROCESSED_DIR = ROOT / "data" / "processed"
 MODEL_PATH = ROOT / "models" / "svd_cf_model.pkl"
 CONTENT_DIR = ROOT / "models" / "content"
 OUT_PATH = ROOT / "reports" / "hybrid_weight_tuning.csv"
+MLFLOW_DB = ROOT / "mlflow.db"
 
 REL_THRESHOLD = 7
 K = 10
@@ -47,6 +49,9 @@ WEIGHT_COMBOS = [
 
 
 def main():
+    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
+    mlflow.set_experiment("anime-recommender-hybrid")
+
     print("Loading data...")
     train = pd.read_parquet(PROCESSED_DIR / "ratings_train.parquet")
     test = pd.read_parquet(PROCESSED_DIR / "ratings_test.parquet")
@@ -104,6 +109,15 @@ def main():
         })
         print(f"  alpha={combo['alpha']} beta={combo['beta']} gamma={combo['gamma']}  "
               f"ndcg={avg['ndcg']:.4f}")
+
+        with mlflow.start_run(run_name=f"hybrid_a{combo['alpha']}_b{combo['beta']}_g{combo['gamma']}"):
+            mlflow.log_params({**combo, "k": K, "n_users": len(sample), "rel_threshold": REL_THRESHOLD})
+            mlflow.log_metrics({
+                "precision": float(avg["precision"]),
+                "recall": float(avg["recall"]),
+                "ndcg": float(avg["ndcg"]),
+                "coverage": len(recommended_ever) / len(catalog_ids),
+            })
 
     summary = pd.DataFrame(results).sort_values("ndcg", ascending=False)
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
