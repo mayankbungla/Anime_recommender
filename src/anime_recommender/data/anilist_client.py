@@ -4,6 +4,7 @@ Used as the first source for live anime data, with Jikan and the
 local dataset as fallbacks when unavailable.
 """
 
+import logging
 import operator
 import threading
 import time
@@ -12,6 +13,8 @@ import requests
 from cachetools import TTLCache, cachedmethod
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+logger = logging.getLogger(__name__)
 
 ANILIST_URL = "https://graphql.anilist.co"
 
@@ -153,19 +156,22 @@ class AniListClient:
     def top(self, limit: int = 50) -> list:
         try:
             return self._fetch_top(limit)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("top request failed: %s", exc)
             return []
 
     def genre(self, genre: str, limit: int = 20) -> list:
         try:
             return self._fetch_genre(genre, limit)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("genre request failed: %s", exc)
             return []
 
     def search(self, query: str, limit: int = 12) -> list:
         try:
             return self._fetch_search(query, limit)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("search request failed: %s", exc)
             return []
 
 

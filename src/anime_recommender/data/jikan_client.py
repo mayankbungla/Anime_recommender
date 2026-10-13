@@ -14,6 +14,7 @@ imports, they just delegate to the client now instead of calling
 requests directly.
 """
 
+import logging
 import operator
 import threading
 
@@ -21,6 +22,8 @@ import requests
 from cachetools import TTLCache, cachedmethod
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+logger = logging.getLogger(__name__)
 
 JIKAN = "https://api.jikan.moe/v4"
 
@@ -97,37 +100,43 @@ class JikanClient:
     def search(self, query: str, limit: int = 12) -> list:
         try:
             return self._fetch_search(query, limit)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("search request failed: %s", exc)
             return []
 
     def anime(self, mal_id: int) -> dict:
         try:
             return self._fetch_anime(mal_id)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("anime request failed: %s", exc)
             return {}
 
     def recommendations(self, mal_id: int) -> list:
         try:
             return self._fetch_recommendations(mal_id)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("recommendations request failed: %s", exc)
             return []
 
     def top(self, limit: int = 50) -> list:
         try:
             return self._fetch_top(limit)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("top request failed: %s", exc)
             return []
 
     def season_now(self, limit: int = 20) -> list:
         try:
             return self._fetch_season_now(limit)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("season_now request failed: %s", exc)
             return []
 
     def genre(self, genre_id: int, limit: int = 20) -> list:
         try:
             return self._fetch_genre(genre_id, limit)
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as exc:
+            logger.warning("genre request failed: %s", exc)
             return []
 
 
