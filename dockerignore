@@ -1,0 +1,23 @@
+# Keep the API image small: only src/, models/ (minus the full pickle) and
+# data/processed/anime_clean.parquet are needed at runtime.
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.claude
+.env
+mlflow.db
+models/svd_cf_model.pkl
+data/raw
+data/*.csv
+data/*.ipynb
+data/processed/ratings_*.parquet
+data/processed/anime_synopses.parquet
+notebooks
+reports
+tests
+scripts
+*.ipynb
