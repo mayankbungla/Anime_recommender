@@ -29,3 +29,6 @@ Thumbs.db
 # MLflow local tracking database
 mlflow.db
 mlflow.db-*
+
+# Local recommendation log (created at runtime)
+data/recommendation_log.db
