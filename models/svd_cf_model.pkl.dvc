@@ -1,0 +1,5 @@
+outs:
+- md5: 7a65592fa4b23687536c8bb70531152e
+  size: 169421043
+  hash: md5
+  path: svd_cf_model.pkl

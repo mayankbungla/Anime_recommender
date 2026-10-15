@@ -1,0 +1,5 @@
+outs:
+- md5: a862670dc7efdde77857c3e67d2a211c
+  size: 1971645
+  hash: md5
+  path: ratings_test.parquet

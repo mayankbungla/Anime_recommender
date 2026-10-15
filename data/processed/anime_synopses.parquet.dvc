@@ -1,0 +1,5 @@
+outs:
+- md5: 776a0e01770dc43b67a958012abb7242
+  size: 243386
+  hash: md5
+  path: anime_synopses.parquet

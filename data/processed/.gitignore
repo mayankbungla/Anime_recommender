@@ -1,0 +1,4 @@
+/ratings_train.parquet
+/ratings_val.parquet
+/ratings_test.parquet
+/anime_synopses.parquet

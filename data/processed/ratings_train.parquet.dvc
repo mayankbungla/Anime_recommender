@@ -1,0 +1,5 @@
+outs:
+- md5: eae1c738f711a69e792066fc3e539a8d
+  size: 11446715
+  hash: md5
+  path: ratings_train.parquet
