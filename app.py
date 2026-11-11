@@ -384,6 +384,9 @@ def page_community(n_recs=10):
 
         st.markdown(f"#### Because you liked **{payload['query_title']}**:")
         render_cards(details, cols=5, source_page="because_you_liked_recommend")
+
+
+def page_browse():
     page_header("Browse by Mood", "Not sure what you want? Start with a feeling.")
 
     MOODS = {
@@ -410,6 +413,9 @@ def page_community(n_recs=10):
         with st.spinner("Loading..."):
             results = get_by_genre(anilist_genre, jikan_genre_id, limit=60)
         render_cards(results, cols=5, source_page="browse_by_mood")
+
+
+def page_airing():
     page_header("Airing Now", "The freshest shows and what everyone is watching this season")
 
     with st.spinner("Fetching this season's anime..."):
@@ -466,7 +472,7 @@ def page_top():
 
 
 def page_catalogue():
-    page_header("Browse Catalogue", "Explore the full dataset")
+    page_header("Browse Catalogue", "Find something new to watch")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -569,21 +575,13 @@ with st.sidebar:
             "📚  Browse Catalogue",
             "📡  Airing Now",
             "🏆  All-Time Greatest",
-            "📊  Analytics",
         ],
         label_visibility="collapsed"
     )
 
     st.markdown("---")
-    n_recs = st.slider("Recommendations to show", min_value=5, max_value=20, value=10, step=1)
+    n_recs = st.slider("Recommendations to show", min_value=6, max_value=30, value=12, step=1)
     st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.link_button("GitHub", "https://github.com/mayankbungla/Anime_recommender", width="stretch")
-    with col2:
-        st.link_button("Dataset", "https://www.kaggle.com/datasets/CooperUnion/anime-recommendations-database", width="stretch")
-    st.markdown("---")
-    st.markdown('<p style="font-size:0.72rem;color:#555;text-align:center;">Powered by MyAnimeList</p>', unsafe_allow_html=True)
 
 
 # -- Router
@@ -598,5 +596,3 @@ elif "Airing Now" in page:
     page_airing()
 elif "All-Time Greatest" in page:
     page_top()
-elif "Analytics" in page:
-    page_analytics()
