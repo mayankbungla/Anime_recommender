@@ -79,7 +79,14 @@ anime_clean = pd.read_parquet(ANIME_CLEAN_PATH).set_index("anime_id")
 def resolve_anime_id(name: str) -> int | None:
     """Case-insensitive substring match against the content catalogue."""
     matches = content.catalog[content.catalog["name"].str.contains(name, case=False, na=False, regex=False)]
-    return int(matches.iloc[0]["anime_id"]) if len(matches) else None
+    if not len(matches):
+        return None
+    exact = matches[matches["name"].str.lower() == name.strip().lower()]
+    if len(exact):
+        return int(exact.iloc[0]["anime_id"])
+    # several partial matches: most popular title wins
+    best = matches.assign(_pop=matches["anime_id"].map(popularity).fillna(0.0)).sort_values("_pop", ascending=False)
+    return int(best.iloc[0]["anime_id"])
 
 
 def cf_shortlist(anime_id: int, n: int) -> list:
@@ -140,6 +147,31 @@ def item_hybrid_top_n(query_id: int, k: int, candidate_ids: list,
     return scored[:k]
 
 
+_catalog_ids = content.catalog["anime_id"].to_numpy()
+_cf_rows = np.array([_row_by_anime_id.get(a, -1) for a in _catalog_ids])
+_unit_factors = item_factors / (_item_norms[:, None] + 1e-10)
+_pop_vec = np.array([popularity.get(a, 0.0) for a in _catalog_ids])
+
+
+def full_catalogue_top(query_id: int, k: int, alpha: float = 0.34,
+                       beta: float = 0.33, gamma: float = 0.33) -> list:
+    """Hybrid score for every anime in the catalogue at once (vectorised),
+    so no candidate shortlist limits what can be recommended."""
+    q = content._row_by_id[query_id]
+    content_s = (content.embeddings @ content.embeddings[q] + 1) / 2
+    fallback = (beta * content_s + gamma * _pop_vec) / (beta + gamma)
+    scores = fallback
+    if query_id in _row_by_anime_id:
+        sims = _unit_factors @ _unit_factors[_row_by_anime_id[query_id]]
+        has_cf = _cf_rows >= 0
+        cf = np.where(has_cf, (sims[np.where(has_cf, _cf_rows, 0)] + 1) / 2, 0.0)
+        scores = np.where(has_cf, alpha * cf + beta * content_s + gamma * _pop_vec, fallback)
+    scores = scores.copy()
+    scores[q] = -np.inf
+    top = np.argsort(-scores)[:k]
+    return [(int(_catalog_ids[i]), float(scores[i])) for i in top]
+
+
 def _none_if_nan(value):
     """Parquet-sourced numeric fields come back as NaN, not missing,
     NaN isn't valid JSON so this turns it into a real null."""
@@ -178,13 +210,7 @@ def recommend(request: RecommendRequest):
     if anime_id is None:
         raise HTTPException(status_code=404, detail=f"No anime matching '{request.anime_name}'")
 
-    candidates = list(dict.fromkeys(
-        cf_shortlist(anime_id, SHORTLIST_SIZE) + content_shortlist(anime_id, SHORTLIST_SIZE)
-    ))
-    if not candidates:
-        raise HTTPException(status_code=404, detail="No candidates found for this anime")
-
-    ranked = item_hybrid_top_n(anime_id, request.k, candidates)
+    ranked = full_catalogue_top(anime_id, max(1, min(request.k, 100)))
 
     titles = content.catalog.set_index("anime_id")["name"]
     return RecommendResponse(
