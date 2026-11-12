@@ -35,6 +35,32 @@ def _local_top(limit: int) -> list:
     ]
 
 
+def get_airing(limit: int = 40) -> list:
+    """Anime airing now. Tries AniList, then Jikan. No local fallback
+    since the stored dataset has no airing information."""
+    result = anilist_client.airing(limit)
+    if result:
+        return result
+    return jikan_client.season_now(limit)
+
+
+def attach_posters(cards: list) -> list:
+    """Fills in missing cover images from AniList, one batched request
+    per 50 cards. Cards stay as they are if the lookup fails."""
+    def has_image(card):
+        return bool(((card.get("images") or {}).get("jpg") or {}).get("large_image_url"))
+
+    missing = [c["mal_id"] for c in cards if c.get("mal_id") and not has_image(c)]
+    if not missing:
+        return cards
+    found = anilist_client.posters(missing)
+    for card in cards:
+        url = found.get(card.get("mal_id"))
+        if url and not has_image(card):
+            card["images"] = {"jpg": {"large_image_url": url}}
+    return cards
+
+
 def get_genres_for_ids(anime_ids: list) -> dict:
     """anime_id -> genre string, for the given ids. Local-data only,
     used by Day 42's analytics page, not by any live-display path."""

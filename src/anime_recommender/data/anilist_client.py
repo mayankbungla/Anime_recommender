@@ -60,6 +60,34 @@ query ($genre: String, $page: Int, $perPage: Int) {
 }
 """
 
+AIRING_QUERY = """
+query ($page: Int, $perPage: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo { hasNextPage }
+    media(type: ANIME, status: RELEASING, sort: POPULARITY_DESC) {
+      idMal
+      title { romaji english }
+      coverImage { large }
+      averageScore
+      episodes
+      genres
+      siteUrl
+    }
+  }
+}
+"""
+
+POSTER_QUERY = """
+query ($ids: [Int], $perPage: Int) {
+  Page(perPage: $perPage) {
+    media(type: ANIME, idMal_in: $ids) {
+      idMal
+      coverImage { large }
+    }
+  }
+}
+"""
+
 SEARCH_QUERY = """
 query ($search: String, $perPage: Int) {
   Page(perPage: $perPage) {
@@ -105,6 +133,7 @@ class AniListClient:
         self.session = requests.Session()
         self.cache = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
         self.lock = threading.Lock()
+        self.poster_cache = {}
 
         retry = Retry(
             total=max_retries,
@@ -152,6 +181,37 @@ class AniListClient:
         data = self._post(SEARCH_QUERY, {"search": query, "perPage": limit})
         media = data.get("data", {}).get("Page", {}).get("media", [])
         return [_to_card(item) for item in media if item.get("idMal")]
+
+    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    def _fetch_airing(self, limit: int) -> list:
+        return self._fetch_paged(AIRING_QUERY, {}, limit)
+
+    def airing(self, limit: int = 40) -> list:
+        try:
+            return self._fetch_airing(limit)
+        except requests.exceptions.RequestException as exc:
+            logger.warning("airing request failed: %s", exc)
+            return []
+
+    def posters(self, ids: list) -> dict:
+        """mal_id -> cover url. Successful lookups are kept for the life of
+        the process, failures are never stored."""
+        wanted = [i for i in dict.fromkeys(ids) if i not in self.poster_cache]
+        for start in range(0, len(wanted), PER_PAGE):
+            chunk = wanted[start:start + PER_PAGE]
+            if start:
+                time.sleep(PAGE_DELAY)
+            try:
+                data = self._post(POSTER_QUERY, {"ids": chunk, "perPage": len(chunk)})
+            except requests.exceptions.RequestException as exc:
+                logger.warning("poster request failed: %s", exc)
+                break
+            media = ((data.get("data") or {}).get("Page") or {}).get("media") or []
+            for item in media:
+                url = (item.get("coverImage") or {}).get("large")
+                if item.get("idMal") and url:
+                    self.poster_cache[item["idMal"]] = url
+        return {i: self.poster_cache[i] for i in ids if i in self.poster_cache}
 
     def top(self, limit: int = 50) -> list:
         try:

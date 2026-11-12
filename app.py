@@ -1,4 +1,5 @@
 from pathlib import Path
+import html
 import logging
 import os
 import sys
@@ -12,7 +13,7 @@ from dotenv import load_dotenv
 
 from anime_recommender.data.jikan_client import jikan_anime, jikan_season_now
 from anime_recommender.data.metadata_provider import (
-    get_top, get_search, get_catalogue, get_all_paginated, get_by_genre, get_genres_for_ids,
+    get_top, get_search, get_catalogue, get_airing, attach_posters, get_all_paginated, get_by_genre, get_genres_for_ids,
 )
 from anime_recommender.data import tracking
 
@@ -197,12 +198,23 @@ div[data-testid="stSpinner"] { color: var(--accent) !important; }
 
 # -- Our own API (the trained hybrid model)
 
-def api_recommend(anime_name: str, k: int = 10):
+def api_search(query: str, limit: int = 30) -> list:
+    """Title search against the local catalogue (handles typos)."""
+    try:
+        r = requests.get(f"{API_BASE}/search", params={"q": query, "limit": limit}, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.RequestException as exc:
+        logger.warning("search call failed: %s", exc)
+        return []
+
+
+def api_recommend(anime_id: int | None = None, anime_name: str = "", k: int = 10):
     """Calls our trained hybrid model. Returns the parsed response, or
     a dict with an 'error' key if the anime wasn't found or the API
     isn't reachable."""
     try:
-        r = requests.post(f"{API_BASE}/recommend", json={"anime_name": anime_name, "k": k}, timeout=10)
+        r = requests.post(f"{API_BASE}/recommend", json={"anime_id": anime_id, "anime_name": anime_name, "k": k}, timeout=20)
         if r.status_code == 404:
             return {"error": r.json().get("detail", "That anime isn't in our trained dataset.")}
         r.raise_for_status()
@@ -235,6 +247,7 @@ def render_cards(anime_list: list, cols: int = 5, source_page: str = "unknown"):
         st.warning("Nothing to show right now. Try a different search.")
         return
 
+    anime_list = attach_posters(anime_list)
     tracking.log_shown(anime_list, source_page, st.session_state.session_id)
 
     groups = [anime_list[i:i+cols] for i in range(0, len(anime_list), cols)]
@@ -249,7 +262,8 @@ def render_cards(anime_list: list, cols: int = 5, source_page: str = "unknown"):
             score = a.get("score")
             match = a.get("hybrid_match")
             genres = ", ".join(g["name"] for g in a.get("genres", [])[:2])
-            episodes = a.get("episodes") or "?"
+            episodes = a.get("episodes")
+            episodes = "?" if episodes is None or pd.isna(episodes) else int(episodes)
             url = a.get("url", "#")
             with col:
                 if img:
@@ -328,62 +342,77 @@ def page_browse_all():
             st.rerun()
 
 
-def page_community(n_recs=10):
+def rec_to_card(rec: dict) -> dict:
+    genres = [{"name": g.strip()} for g in (rec.get("genre") or "").split(",") if g.strip()]
+    return {
+        "mal_id": rec["anime_id"],
+        "title": html.unescape(rec["title"]),
+        "images": {"jpg": {"large_image_url": ""}},
+        "score": rec.get("rating"),
+        "episodes": rec.get("episodes"),
+        "genres": genres,
+        "url": "#",
+    }
+
+
+def search_options(query: str) -> dict:
+    """label -> anime id, from live results (English titles) and the catalogue (typo tolerant)."""
+    by_id = {}
+    for a in get_search(query, limit=12):
+        if a.get("mal_id"):
+            year = a.get("year")
+            by_id[a["mal_id"]] = f"{a['title']}  ({year})" if year else a["title"]
+    for a in api_search(query, 30):
+        by_id.setdefault(a["anime_id"], html.unescape(a["title"]))
+    labels, seen = {}, {}
+    for anime_id, label in by_id.items():
+        seen[label] = seen.get(label, 0) + 1
+        labels[label if seen[label] == 1 else f"{label} #{seen[label]}"] = anime_id
+    return labels
+
+
+def page_community():
     page_header("Because You Liked...", "Pick a show, get similar picks")
 
     query = st.text_input("", placeholder="🔍  Search for an anime title...", label_visibility="collapsed")
-    if not query:
+    if not query.strip():
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("##### 🔥 Popular right now")
         with st.spinner("Loading..."):
             top = get_top(limit=10)
         render_cards(top, cols=5, source_page="because_you_liked_popular")
-
-    with st.spinner("Searching..."):
-        results = get_search(query, limit=12)
-
-    if not results:
-        st.error("No anime found. Try a different spelling.")
         return
 
-    options = {f"{a['title']}  ({a.get('year') or '?'})": a["title"] for a in results}
-    chosen_label = st.selectbox("", list(options.keys()), label_visibility="collapsed")
-    chosen_title = options[chosen_label]
+    with st.spinner("Searching..."):
+        options = search_options(query)
+
+    if not options:
+        st.error("No anime found. Check the spelling or try another title.")
+        return
+
+    chosen_id = options[st.selectbox("", list(options.keys()), label_visibility="collapsed")]
 
     if st.button("Find Recommendations"):
-        with st.spinner("Scoring against our trained model..."):
-            payload = api_recommend(chosen_title, n_recs)
-
+        with st.spinner("Finding recommendations..."):
+            payload = api_recommend(anime_id=chosen_id, k=100)
         if "error" in payload:
             st.error(payload["error"])
             return
         if not payload["recommendations"]:
             st.warning("No recommendations found for this title.")
             return
+        st.session_state.rec_cards = [rec_to_card(r) for r in payload["recommendations"]]
+        st.session_state.rec_title = payload["query_title"]
+        st.session_state.rec_for = chosen_id
+        st.session_state.rec_shown = 20
 
-        with st.spinner("Fetching details..."):
-            details = []
-            for rec in payload["recommendations"]:
-                d = jikan_anime(rec["anime_id"])
-                if not d:
-                    # Jikan doesn't have this id (delisted/renamed), fall
-                    # back to our own dataset so the card still shows.
-                    local = api_anime(rec["anime_id"])
-                    if local:
-                        d = {
-                            "mal_id": rec["anime_id"],
-                            "title": local.get("name", rec["title"]),
-                            "score": local.get("rating"),
-                            "episodes": local.get("episodes"),
-                            "genres": [{"name": g.strip()} for g in (local.get("genre") or "").split(",") if g.strip()],
-                        }
-                if d:
-                    d = dict(d)
-                    d["hybrid_match"] = rec["hybrid_score"]
-                    details.append(d)
-
-        st.markdown(f"#### Because you liked **{payload['query_title']}**:")
-        render_cards(details, cols=5, source_page="because_you_liked_recommend")
+    if st.session_state.get("rec_for") == chosen_id and st.session_state.get("rec_cards"):
+        cards, shown = st.session_state.rec_cards, st.session_state.rec_shown
+        st.markdown(f"#### Because you liked **{html.unescape(st.session_state.rec_title)}**:")
+        render_cards(cards[:shown], cols=5, source_page="because_you_liked_recommend")
+        if shown < len(cards) and st.button("Show more"):
+            st.session_state.rec_shown = shown + 20
+            st.rerun()
 
 
 def page_browse():
@@ -419,7 +448,7 @@ def page_airing():
     page_header("Airing Now", "The freshest shows and what everyone is watching this season")
 
     with st.spinner("Fetching this season's anime..."):
-        results = jikan_season_now(limit=25)
+        results = get_airing(limit=40)
 
     if not results:
         st.warning("Couldn't load seasonal data right now. Please try again in a moment.")
@@ -580,14 +609,12 @@ with st.sidebar:
     )
 
     st.markdown("---")
-    n_recs = st.slider("Recommendations to show", min_value=6, max_value=30, value=12, step=1)
-    st.markdown("---")
 
 
 # -- Router
 
 if "Because You Liked" in page:
-    page_community(n_recs)
+    page_community()
 elif "Browse by Mood" in page:
     page_browse()
 elif "Browse Catalogue" in page:
