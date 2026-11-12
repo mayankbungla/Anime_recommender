@@ -224,7 +224,7 @@ def recommend(request: RecommendRequest):
     if anime_id is None:
         raise HTTPException(status_code=404, detail="We don't have recommendations for that title yet.")
 
-    ranked = full_catalogue_top(anime_id, max(1, min(request.k, 100)))
+    ranked = full_catalogue_top(anime_id, max(1, min(request.k, 300)))
     titles = content.catalog.set_index("anime_id")["name"]
     return RecommendResponse(
         query_anime_id=anime_id,
