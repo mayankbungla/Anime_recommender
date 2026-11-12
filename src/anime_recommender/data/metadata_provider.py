@@ -44,6 +44,9 @@ def get_airing(limit: int = 40) -> list:
     return jikan_client.season_now(limit)
 
 
+_no_cover = set()
+
+
 def attach_posters(cards: list) -> list:
     """Fills in missing cover images from AniList, one batched request
     per 50 cards. Cards stay as they are if the lookup fails."""
@@ -53,7 +56,21 @@ def attach_posters(cards: list) -> list:
     missing = [c["mal_id"] for c in cards if c.get("mal_id") and not has_image(c)]
     if not missing:
         return cards
-    found = anilist_client.posters(missing)
+    found = dict(anilist_client.posters(missing))
+
+    # second source for the few covers AniList does not have, capped so a
+    # page of obscure titles does not wait on many slow lookups
+    tried = 0
+    for mal_id in missing:
+        if mal_id in found or mal_id in _no_cover or tried >= 6:
+            continue
+        tried += 1
+        url = ((jikan_client.anime(mal_id).get("images") or {}).get("jpg") or {}).get("large_image_url")
+        if url:
+            found[mal_id] = url
+        else:
+            _no_cover.add(mal_id)
+
     for card in cards:
         url = found.get(card.get("mal_id"))
         if url and not has_image(card):
@@ -149,6 +166,15 @@ def get_by_genre(anilist_genre: str, jikan_genre_id: int, limit: int = 50) -> li
         return result
 
     return _local_by_genre(anilist_genre, limit)
+
+
+def get_mood_list(anilist_genre: str, jikan_genre_id: int, limit: int = 400) -> list:
+    """Everything for one genre: live results first (newest titles), then
+    the rest of the stored catalogue, without duplicates."""
+    live = get_by_genre(anilist_genre, jikan_genre_id, limit)
+    seen = {a["mal_id"] for a in live if a.get("mal_id")}
+    rest = [a for a in _local_by_genre(anilist_genre, 5000) if a["mal_id"] not in seen]
+    return live + rest
 
 
 def get_catalogue(sort_by: str = "rating", genre_filter: str = None, page: int = 1, per_page: int = 50) -> tuple:

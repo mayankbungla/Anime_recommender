@@ -24,6 +24,7 @@ ANILIST_URL = "https://graphql.anilist.co"
 # deliberately shallow rather than trying to pull the whole catalogue.
 PER_PAGE = 50
 MAX_PAGES = 4
+DEEP_PAGES = 8  # airing and genre lists can run to a few hundred titles
 PAGE_DELAY = 0.35  # stays clear of AniList's burst limiter between pages
 
 TOP_QUERY = """
@@ -131,9 +132,15 @@ class AniListClient:
         self.base_url = base_url
         self.timeout = timeout
         self.session = requests.Session()
-        self.cache = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        # one cache per fetch method, a shared one would mix up results
+        # whenever two methods are called with the same arguments
+        self.cache_top = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_genre = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_search = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_airing = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
         self.lock = threading.Lock()
         self.poster_cache = {}
+        self.poster_missing = set()
 
         retry = Retry(
             total=max_retries,
@@ -149,14 +156,14 @@ class AniListClient:
         r.raise_for_status()
         return r.json()
 
-    def _fetch_paged(self, query: str, variables: dict, limit: int) -> list:
+    def _fetch_paged(self, query: str, variables: dict, limit: int, max_pages: int = MAX_PAGES) -> list:
         """Collects up to `limit` items across multiple AniList pages.
         A single Page(perPage=...) call caps out well short of a real
         browse-sized list, so this loops until enough items are in hand,
         the API says there's no next page, or MAX_PAGES is hit."""
         items = []
         page = 1
-        while len(items) < limit and page <= MAX_PAGES:
+        while len(items) < limit and page <= max_pages:
             if page > 1:
                 time.sleep(PAGE_DELAY)
             data = self._post(query, {**variables, "page": page, "perPage": PER_PAGE})
@@ -168,23 +175,23 @@ class AniListClient:
             page += 1
         return items[:limit]
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_top"), lock=operator.attrgetter("lock"))
     def _fetch_top(self, limit: int) -> list:
         return self._fetch_paged(TOP_QUERY, {}, limit)
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_genre"), lock=operator.attrgetter("lock"))
     def _fetch_genre(self, genre: str, limit: int) -> list:
-        return self._fetch_paged(GENRE_QUERY, {"genre": genre}, limit)
+        return self._fetch_paged(GENRE_QUERY, {"genre": genre}, limit, DEEP_PAGES)
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_search"), lock=operator.attrgetter("lock"))
     def _fetch_search(self, query: str, limit: int) -> list:
         data = self._post(SEARCH_QUERY, {"search": query, "perPage": limit})
         media = data.get("data", {}).get("Page", {}).get("media", [])
         return [_to_card(item) for item in media if item.get("idMal")]
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_airing"), lock=operator.attrgetter("lock"))
     def _fetch_airing(self, limit: int) -> list:
-        return self._fetch_paged(AIRING_QUERY, {}, limit)
+        return self._fetch_paged(AIRING_QUERY, {}, limit, DEEP_PAGES)
 
     def airing(self, limit: int = 40) -> list:
         try:
@@ -196,7 +203,7 @@ class AniListClient:
     def posters(self, ids: list) -> dict:
         """mal_id -> cover url. Successful lookups are kept for the life of
         the process, failures are never stored."""
-        wanted = [i for i in dict.fromkeys(ids) if i not in self.poster_cache]
+        wanted = [i for i in dict.fromkeys(ids) if i not in self.poster_cache and i not in self.poster_missing]
         for start in range(0, len(wanted), PER_PAGE):
             chunk = wanted[start:start + PER_PAGE]
             if start:
@@ -211,6 +218,7 @@ class AniListClient:
                 url = (item.get("coverImage") or {}).get("large")
                 if item.get("idMal") and url:
                     self.poster_cache[item["idMal"]] = url
+            self.poster_missing.update(i for i in chunk if i not in self.poster_cache)
         return {i: self.poster_cache[i] for i in ids if i in self.poster_cache}
 
     def top(self, limit: int = 50) -> list:

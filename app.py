@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from anime_recommender.data.jikan_client import jikan_anime, jikan_season_now
 from anime_recommender.data.metadata_provider import (
-    get_top, get_search, get_catalogue, get_airing, attach_posters, get_all_paginated, get_by_genre, get_genres_for_ids,
+    get_top, get_search, get_catalogue, get_airing, get_mood_list, attach_posters, get_all_paginated, get_by_genre, get_genres_for_ids,
 )
 from anime_recommender.data import tracking
 
@@ -342,6 +342,16 @@ def page_browse_all():
             st.rerun()
 
 
+def render_paged(cards: list, key: str, source_page: str, step: int = 40):
+    """Shows a long list in steps, with a count and a Show more button."""
+    shown = st.session_state.get(key, step)
+    st.caption(f"Showing {min(shown, len(cards))} of {len(cards)}")
+    render_cards(cards[:shown], cols=5, source_page=source_page)
+    if shown < len(cards) and st.button("Show more", key=f"{key}_more"):
+        st.session_state[key] = shown + step
+        st.rerun()
+
+
 def rec_to_card(rec: dict) -> dict:
     genres = [{"name": g.strip()} for g in (rec.get("genre") or "").split(",") if g.strip()]
     return {
@@ -394,7 +404,7 @@ def page_community():
 
     if st.button("Find Recommendations"):
         with st.spinner("Finding recommendations..."):
-            payload = api_recommend(anime_id=chosen_id, k=100)
+            payload = api_recommend(anime_id=chosen_id, k=300)
         if "error" in payload:
             st.error(payload["error"])
             return
@@ -404,15 +414,11 @@ def page_community():
         st.session_state.rec_cards = [rec_to_card(r) for r in payload["recommendations"]]
         st.session_state.rec_title = payload["query_title"]
         st.session_state.rec_for = chosen_id
-        st.session_state.rec_shown = 20
+        st.session_state[f"shown_rec_{chosen_id}"] = 40
 
     if st.session_state.get("rec_for") == chosen_id and st.session_state.get("rec_cards"):
-        cards, shown = st.session_state.rec_cards, st.session_state.rec_shown
         st.markdown(f"#### Because you liked **{html.unescape(st.session_state.rec_title)}**:")
-        render_cards(cards[:shown], cols=5, source_page="because_you_liked_recommend")
-        if shown < len(cards) and st.button("Show more"):
-            st.session_state.rec_shown = shown + 20
-            st.rerun()
+        render_paged(st.session_state.rec_cards, f"shown_rec_{chosen_id}", "because_you_liked_recommend")
 
 
 def page_browse():
@@ -440,22 +446,22 @@ def page_browse():
         anilist_genre, jikan_genre_id = st.session_state["mood_genre"]
         st.markdown(f"#### Top picks for: **{label}**")
         with st.spinner("Loading..."):
-            results = get_by_genre(anilist_genre, jikan_genre_id, limit=60)
-        render_cards(results, cols=5, source_page="browse_by_mood")
+            results = get_mood_list(anilist_genre, jikan_genre_id)
+        render_paged(results, f"shown_mood_{label}", "browse_by_mood")
 
 
 def page_airing():
     page_header("Airing Now", "The freshest shows and what everyone is watching this season")
 
     with st.spinner("Fetching this season's anime..."):
-        results = get_airing(limit=40)
+        results = get_airing(limit=400)
 
     if not results:
         st.warning("Couldn't load seasonal data right now. Please try again in a moment.")
         return
 
     results_sorted = sorted(results, key=lambda x: x.get("score") or 0, reverse=True)
-    render_cards(results_sorted, cols=5, source_page="airing_now")
+    render_paged(results_sorted, "shown_airing", "airing_now")
 
 
 def page_top():

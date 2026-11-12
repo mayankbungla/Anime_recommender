@@ -39,7 +39,14 @@ class JikanClient:
         self.base_url = base_url
         self.timeout = timeout
         self.session = requests.Session()
-        self.cache = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        # one cache per fetch method, a shared one would mix up results
+        # whenever two methods are called with the same arguments
+        self.cache_search = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_anime = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_recommendations = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_top = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_season_now = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
+        self.cache_genre = TTLCache(maxsize=cache_maxsize, ttl=cache_ttl)
         self.lock = threading.Lock()
 
         retry = Retry(
@@ -55,37 +62,37 @@ class JikanClient:
     # -- cached fetchers: raise on failure, so cachedmethod only ever
     # stores a real successful response, never an error
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_search"), lock=operator.attrgetter("lock"))
     def _fetch_search(self, query: str, limit: int) -> list:
         r = self.session.get(f"{self.base_url}/anime", params={"q": query, "limit": limit, "sfw": True}, timeout=self.timeout)
         r.raise_for_status()
         return r.json().get("data", [])
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_anime"), lock=operator.attrgetter("lock"))
     def _fetch_anime(self, mal_id: int) -> dict:
         r = self.session.get(f"{self.base_url}/anime/{mal_id}", timeout=self.timeout)
         r.raise_for_status()
         return r.json().get("data", {})
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_recommendations"), lock=operator.attrgetter("lock"))
     def _fetch_recommendations(self, mal_id: int) -> list:
         r = self.session.get(f"{self.base_url}/anime/{mal_id}/recommendations", timeout=self.timeout)
         r.raise_for_status()
         return r.json().get("data", [])[:12]
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_top"), lock=operator.attrgetter("lock"))
     def _fetch_top(self, limit: int) -> list:
         r = self.session.get(f"{self.base_url}/top/anime", params={"limit": limit}, timeout=self.timeout)
         r.raise_for_status()
         return r.json().get("data", [])
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_season_now"), lock=operator.attrgetter("lock"))
     def _fetch_season_now(self, limit: int) -> list:
         r = self.session.get(f"{self.base_url}/seasons/now", params={"limit": limit}, timeout=self.timeout)
         r.raise_for_status()
         return r.json().get("data", [])
 
-    @cachedmethod(operator.attrgetter("cache"), lock=operator.attrgetter("lock"))
+    @cachedmethod(operator.attrgetter("cache_genre"), lock=operator.attrgetter("lock"))
     def _fetch_genre(self, genre_id: int, limit: int) -> list:
         r = self.session.get(
             f"{self.base_url}/anime",
