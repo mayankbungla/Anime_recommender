@@ -61,3 +61,21 @@ def test_anime_lookup_by_id_matches_recommend_query_id():
 def test_anime_lookup_unknown_id_returns_404():
     response = client.get("/anime/999999999")
     assert response.status_code == 404
+
+
+def test_search_tolerates_typos():
+    response = client.get("/search", params={"q": "Deth Note"})
+    assert response.status_code == 200
+    assert any("Death Note" in hit["title"] for hit in response.json())
+
+
+def test_search_understands_english_titles():
+    response = client.get("/search", params={"q": "attack on titan"})
+    assert any("Shingeki no Kyojin" in hit["title"] for hit in response.json())
+
+
+def test_recommend_by_id_can_return_a_long_list():
+    anime_id = client.post("/recommend", json={"anime_name": KNOWN_ANIME, "k": 1}).json()["query_anime_id"]
+    response = client.post("/recommend", json={"anime_id": anime_id, "k": 60})
+    assert response.status_code == 200
+    assert len(response.json()["recommendations"]) == 60

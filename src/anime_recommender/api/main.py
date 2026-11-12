@@ -38,8 +38,10 @@ from anime_recommender.api.schemas import (
     RecommendationItem,
     RecommendRequest,
     RecommendResponse,
+    SearchResult,
 )
 from anime_recommender.features.content_model import ContentRecommender
+from anime_recommender.features.search import TitleSearch
 from anime_recommender.models.hybrid import item_content_similarity
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -74,19 +76,7 @@ content = ContentRecommender.load(CONTENT_DIR)
 _popularity_df = pd.read_parquet(POPULARITY_PATH)
 popularity = dict(zip(_popularity_df["anime_id"], _popularity_df["popularity"]))
 anime_clean = pd.read_parquet(ANIME_CLEAN_PATH).set_index("anime_id")
-
-
-def resolve_anime_id(name: str) -> int | None:
-    """Case-insensitive substring match against the content catalogue."""
-    matches = content.catalog[content.catalog["name"].str.contains(name, case=False, na=False, regex=False)]
-    if not len(matches):
-        return None
-    exact = matches[matches["name"].str.lower() == name.strip().lower()]
-    if len(exact):
-        return int(exact.iloc[0]["anime_id"])
-    # several partial matches: most popular title wins
-    best = matches.assign(_pop=matches["anime_id"].map(popularity).fillna(0.0)).sort_values("_pop", ascending=False)
-    return int(best.iloc[0]["anime_id"])
+title_search = TitleSearch(content.catalog["anime_id"], content.catalog["name"], popularity)
 
 
 def cf_shortlist(anime_id: int, n: int) -> list:
@@ -172,6 +162,14 @@ def full_catalogue_top(query_id: int, k: int, alpha: float = 0.34,
     return [(int(_catalog_ids[i]), float(scores[i])) for i in top]
 
 
+def _meta(anime_id: int) -> dict:
+    """Display fields for one anime from the cleaned dataset."""
+    if anime_id not in anime_clean.index:
+        return {}
+    row = anime_clean.loc[anime_id]
+    return {k: _none_if_nan(row[k]) for k in ("genre", "type", "episodes", "rating")}
+
+
 def _none_if_nan(value):
     """Parquet-sourced numeric fields come back as NaN, not missing,
     NaN isn't valid JSON so this turns it into a real null."""
@@ -204,20 +202,36 @@ def get_anime(anime_id: int):
     )
 
 
+@app.get("/search", response_model=list[SearchResult])
+def search(q: str, limit: int = 30):
+    hits = title_search.search(q, limit=max(1, min(limit, 100)))
+    return [
+        SearchResult(anime_id=h["anime_id"], title=h["title"],
+                     genre=_meta(h["anime_id"]).get("genre"), rating=_meta(h["anime_id"]).get("rating"))
+        for h in hits
+    ]
+
+
 @app.post("/recommend", response_model=RecommendResponse)
 def recommend(request: RecommendRequest):
-    anime_id = resolve_anime_id(request.anime_name)
+    anime_id = None
+    if request.anime_id is not None and request.anime_id in content._row_by_id:
+        anime_id = request.anime_id
+    elif request.anime_name.strip():
+        hits = title_search.search(request.anime_name, limit=1)
+        if hits and hits[0]["match"] >= 85:
+            anime_id = hits[0]["anime_id"]
     if anime_id is None:
-        raise HTTPException(status_code=404, detail=f"No anime matching '{request.anime_name}'")
+        raise HTTPException(status_code=404, detail="We don't have recommendations for that title yet.")
 
     ranked = full_catalogue_top(anime_id, max(1, min(request.k, 100)))
-
     titles = content.catalog.set_index("anime_id")["name"]
     return RecommendResponse(
         query_anime_id=anime_id,
         query_title=titles.get(anime_id, request.anime_name),
         recommendations=[
-            RecommendationItem(anime_id=aid, title=titles.get(aid, "Unknown"), hybrid_score=round(score, 4))
+            RecommendationItem(anime_id=aid, title=titles.get(aid, "Unknown"),
+                               hybrid_score=round(score, 4), **_meta(aid))
             for aid, score in ranked
         ],
     )

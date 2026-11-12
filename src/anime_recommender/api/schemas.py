@@ -7,7 +7,8 @@ from pydantic import BaseModel
 
 
 class RecommendRequest(BaseModel):
-    anime_name: str
+    anime_name: str = ""
+    anime_id: int | None = None
     k: int = 10
 
 
@@ -15,6 +16,10 @@ class RecommendationItem(BaseModel):
     anime_id: int
     title: str
     hybrid_score: float
+    genre: str | None = None
+    type: str | None = None
+    episodes: float | None = None
+    rating: float | None = None
 
 
 class RecommendResponse(BaseModel):
@@ -38,3 +43,10 @@ class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
     catalog_size: int
+
+
+class SearchResult(BaseModel):
+    anime_id: int
+    title: str
+    genre: str | None = None
+    rating: float | None = None
