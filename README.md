@@ -1,6 +1,8 @@
 # Anime Recommender
 
-Pick an anime you liked, get ten similar ones. Recommendations come from a
+[![tests](https://github.com/mayankbungla/Anime_recommender/actions/workflows/tests.yml/badge.svg)](https://github.com/mayankbungla/Anime_recommender/actions/workflows/tests.yml) ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+
+Pick an anime you liked, get a long list of similar ones. Recommendations come from a
 hybrid of collaborative filtering, synopsis-based content similarity and
 popularity, trained on 6M+ ratings and served through a FastAPI backend with
 a Streamlit front end.
@@ -12,19 +14,18 @@ a Streamlit front end.
 | Recommendations | Browse Catalogue |
 |---|---|
 | ![Recommendations](docs/screenshots/recommendations.png) | ![Catalogue](docs/screenshots/catalogue.png) |
-| **Browse by Mood** | **Analytics** |
-| ![Mood](docs/screenshots/mood.png) | ![Analytics](docs/screenshots/analytics.png) |
+| **Browse by Mood** | **Airing Now** |
+| ![Mood](docs/screenshots/mood.png) | ![Airing](docs/screenshots/airing.png) |
 
 ## What it does
 
-The app has six pages:
+The app has five pages:
 
-- **Because You Liked...** search a title, get similar anime from the hybrid model
-- **Browse by Mood** genre and mood browsing
+- **Because You Liked...** search a title (misspellings and English names are fine) and get up to 300 similar picks, 40 at a time
+- **Browse by Mood** every anime for a genre, newest first, then the rest of the catalogue
 - **Browse Catalogue** all 12,294 anime with sort, filter and pagination
-- **Airing Now** current season
+- **Airing Now** what is airing this season
 - **All-Time Greatest** top rated, paginated
-- **Analytics** most shown anime and genre coverage, from the app's own event log
 
 ## Architecture
 
@@ -52,8 +53,8 @@ flowchart LR
     AL --> UI
     JK --> UI
     LD --> UI
-    UI --> LOG[(SQLite event log)]
-    LOG --> UI
+    UI --> LOG[(Event log)]
+    AL -->|new titles| API
   end
 ```
 
@@ -118,15 +119,22 @@ responses are cached, so an outage is never remembered as "no data". Live data
 only supplies posters, scores and browse lists. Ranking stays entirely with the
 trained signals.
 
-**Why the API shortlists first.** Scoring all 12k anime per request is slow, so
-the API takes nearest neighbours from the CF vectors and the content index,
-then applies the full hybrid score to that pool of about 100.
+**Why it ranks the whole catalogue.** The hybrid score is computed for all
+12k titles at once with vectorised NumPy, so there is no candidate shortlist
+limiting what can be recommended. Search is typo tolerant (RapidFuzz) and maps
+common English titles to the romaji names the catalogue uses.
+
+**How new titles get in.** Recently aired anime missing from the catalogue are
+pulled from the live sources and mixed into the list. They have no ratings and
+no synopsis embedding yet, so they are scored by genre overlap and popularity
+only. Lookups have a short time limit, so a slow source never delays a
+recommendation. Set `LIVE_CANDIDATES=0` to turn this off.
 
 ## Tech stack
 
 Python 3.11, pandas, NumPy, scikit-learn, scikit-surprise, sentence-transformers
 (`all-MiniLM-L6-v2`), FastAPI, Pydantic, Streamlit, SQLite, MLflow, DVC, pytest,
-GitHub Actions, Docker, Render.
+GitHub Actions, Docker, Render, RapidFuzz.
 
 ## Repo layout
 
@@ -139,7 +147,7 @@ src/anime_recommender/
   models/                    SVD training, hybrid scoring, diversity, explanations, confidence
   evaluation/                precision, recall, NDCG written from scratch
 scripts/                     one script per pipeline step, train_models.py runs all of them
-tests/                       28 tests
+tests/                       unit and API tests
 reports/                     metrics CSVs, figures, design notes
 models/                      exported factors, content index, popularity scores
 data/                        raw and processed data (DVC tracked)
@@ -202,9 +210,24 @@ docker run -p 8000:8000 anime-api
   possible without collecting fresh ratings.
 - `/recommend` is item-to-item. The offline evaluation is user-level, so the
   numbers above describe the model, not the live endpoint directly.
+- The catalogue comes from a dataset that ends around 2016. Newer anime can only
+  appear as the few live "new title" picks, ranked without any rating signal.
 - Diversity re-ranking, explanations and confidence scores exist as modules in
   `src/anime_recommender/models/` but are not wired into the API yet.
-- The event log is a SQLite file, so it resets whenever the host redeploys.
+- Which titles were shown is logged to a SQLite file, which resets whenever the host redeploys.
+
+## Contributing
+
+Issues and pull requests are welcome.
+
+1. Fork the repo and create a branch.
+2. Install `requirements-dev.txt` and run `pytest tests/` before and after the change.
+3. Keep commits small with a short message such as `fix: ...` or `feat: ...`.
+4. Open a pull request describing what changed and why.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
 
 ## Author
 

@@ -24,8 +24,8 @@ flowchart LR
     AL --> UI
     JK --> UI
     LD --> UI
-    UI --> LOG[(SQLite event log)]
-    LOG --> UI
+    UI --> LOG[(Event log)]
+    AL -->|new titles| API
   end
 ```
 
